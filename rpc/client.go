@@ -21,8 +21,9 @@ package rpc
 
 import (
 	"_9932xt/myraft/gen-go/raft"
-
+	"_9932xt/myraft/net"
 	"github.com/apache/thrift/lib/go/thrift"
+	"log"
 )
 
 func NewClient(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, addr string,
@@ -65,4 +66,19 @@ func NewClientServerClient(transportFactory thrift.TTransportFactory, protocolFa
 	iprot := protocolFactory.GetProtocol(transport)
 	oprot := protocolFactory.GetProtocol(transport)
 	return raft.NewClientRaftServerClient(thrift.NewTStandardClient(iprot, oprot)), transport, nil
+}
+
+func NewRaftServerClient(addr string) (*raft.RaftServerClient, error) {
+	c, transport, err := NewClient(net.TransportFactory, net.ProtocolFactory, addr, net.Secure, net.Cfg)
+	if err != nil {
+		log.Printf("error new client: %v", err)
+		return c, err
+	}
+	defer func(transport thrift.TTransport) {
+		err := transport.Close()
+		if err != nil {
+			log.Printf("transsport error:%v", err)
+		}
+	}(transport)
+	return c, nil
 }

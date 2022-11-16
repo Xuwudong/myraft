@@ -27,21 +27,21 @@ func RequestVote(client *raft.RaftServerClient, ctx context.Context, req *raft.R
 	return res, err
 }
 
-func AppendEntriesByServer(serverId int, psTemp *net.PeerServer, req *raft.AppendEntriesReq, newClientRetry bool) (*raft.AppendEntriesResp, error) {
+func AppendEntriesByServer(serverId int, addr string, req *raft.AppendEntriesReq, newClientRetry bool) (*raft.AppendEntriesResp, error) {
 	var (
 		client    *raft.RaftServerClient
 		err       error
 		transport thrift.TTransport
 	)
 	for {
-		client, transport, err = NewClient(net.TransportFactory, net.ProtocolFactory, psTemp.ServerAddr, net.Secure, net.Cfg)
+		client, transport, err = NewClient(net.TransportFactory, net.ProtocolFactory, addr, net.Secure, net.Cfg)
 		if err == nil {
 			break
 		}
 		if !newClientRetry {
 			return nil, errno.NewNewClientErr(err.Error())
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		log.Printf("error new client: %v", err)
 	}
 	log.Printf("append log req:%v,id:%d", req, serverId)

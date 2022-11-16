@@ -62,7 +62,6 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 		state.HeartBeatChan <- "receive heartbeat"
 		resp.Succuess = true
 	} else {
-		// todo
 		appendMutex.Lock()
 		defer appendMutex.Unlock()
 		var match bool
@@ -80,9 +79,12 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 		}
 
 		i := req.PreLogIndex + 1
+		j := i
+		deleted := false
 		for _, entry := range req.Entries {
 			if i > 0 && i < int64(len(state.GetServerState().PersistentState.Logs)) && state.GetServerState().PersistentState.Logs[i].Term != entry.Term {
 				//如果一个已经存在的条目和新条目（译者注：即刚刚接收到的日志条目）发生了冲突（因为索引相同，任期不同），那么就删除这个已经存在的条目以及它之后的所有条目
+				deleted = true
 				logDir := state.GetServerState().Conf.LogDir
 				logFilePath := logDir + strconv.FormatInt(int64(state.GetServerState().ServerId), 10) + ".log"
 
@@ -96,7 +98,29 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 			}
 			i++
 		}
-		_, _, err := log2.AppendLog(req.Entries)
+		newEntries := req.Entries
+		if !deleted {
+			newEntries = make([]*raft.LogEntry, 0)
+			for _, entry := range req.Entries {
+				if j > 0 && j < int64(len(state.GetServerState().PersistentState.Logs)) {
+					myLog := state.GetServerState().PersistentState.Logs[j]
+					if myLog.Term == entry.Term &&
+						myLog.Command != nil && myLog.Command.Entity != nil &&
+						entry.Command != nil && entry.Command.Entity != nil &&
+						myLog.Command.Entity.Key == entry.Command.Entity.Key &&
+						myLog.Command.Entity.Value == myLog.Command.Entity.Value {
+						// 去重
+						log.Printf("reduplicate log entry:%v", entry)
+						j++
+						continue
+					}
+				} else {
+					newEntries = append(newEntries, entry)
+					j++
+				}
+			}
+		}
+		_, _, err := log2.AppendLog(newEntries)
 		if err != nil {
 			log.Printf("AppendLog %v", err)
 			resp.Succuess = false
@@ -107,7 +131,6 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 			if req.PreLogIndex+int64(len(req.Entries)) < req.LeaderCommit {
 				min = req.PreLogIndex + int64(len(req.Entries))
 			}
-			// todo 还没machine.Apply()，是否正确
 			state.GetServerState().VolatileState.CommitIndex = min
 		}
 		resp.Succuess = true

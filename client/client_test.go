@@ -33,7 +33,7 @@ func TestCommand(t *testing.T) {
 	var tr thrift.TTransport
 	for {
 		client, tr, err = rpc.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
-			"localhost:9090", false, &thrift.TConfiguration{
+			"localhost:9091", false, &thrift.TConfiguration{
 				TLSConfig: &tls.Config{
 					InsecureSkipVerify: true,
 				},
@@ -70,7 +70,7 @@ func TestRead(t *testing.T) {
 	var tr thrift.TTransport
 	for {
 		client, tr, err = rpc.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
-			"localhost:9092", false, &thrift.TConfiguration{
+			"localhost:9091", false, &thrift.TConfiguration{
 				TLSConfig: &tls.Config{
 					InsecureSkipVerify: true,
 				},
@@ -86,13 +86,13 @@ func TestRead(t *testing.T) {
 		Command: &raft.Command{
 			Opt: raft.Opt_Read,
 			Entity: &raft.Entity{
-				Key: "12312",
+				Key: "3740",
 			},
 		},
 	}
 	resp, err := client.DoCommand(context.Background(), rReq)
 	assert.Nil(t, err)
 	assert.True(t, resp.Succuess == true)
-	assert.True(t, resp.Value == 12312)
+	assert.True(t, resp.Value == 3740)
 	fmt.Println(resp)
 }

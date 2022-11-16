@@ -53,41 +53,50 @@ func Run() {
 			// 自己先得一票
 			atomic.AddUint32(&state.GetServerState().VolatileState.VoteNum, 1)
 			var wg sync.WaitGroup
-			for _, ps := range state.GetServerState().Net.PeerServerMap {
-				wg.Add(1)
-				curPs := ps
-				go func() {
-					defer wg.Done()
-					var (
-						client    *raft.RaftServerClient
-						transport thrift.TTransport
-					)
-					for {
-						client, transport, err = rpc.NewClient(net.TransportFactory, net.ProtocolFactory, curPs.ServerAddr, net.Secure, net.Cfg)
-						if err == nil {
-							break
+			for _, addr := range state.GetServerState().Conf.InnerAddrMap {
+				if addr != state.GetServerState().Net.ServerAddr {
+					wg.Add(1)
+					addrTemp := addr
+					go func() {
+						defer wg.Done()
+						var (
+							client    *raft.RaftServerClient
+							transport thrift.TTransport
+						)
+						retry := 0
+						for {
+							client, transport, err = rpc.NewClient(net.TransportFactory, net.ProtocolFactory, addrTemp, net.Secure, net.Cfg)
+							if err == nil {
+								break
+							}
+							log.Printf("error new client: %v", err)
+							retry++
+							if retry > 5 {
+								break
+							}
 						}
-						log.Printf("error new client: %v", err)
-					}
-					resp, err := rpc.RequestVote(client, context.Background(), requestVoteReq)
-					if err != nil {
-						log.Printf("requestVote error:%v", err)
-						return
-					}
-					defer func(transport thrift.TTransport) {
-						err := transport.Close()
-						if err != nil {
-							log.Printf("transport error: %v", err)
+						if client != nil {
+							resp, err := rpc.RequestVote(client, context.Background(), requestVoteReq)
+							if err != nil {
+								log.Printf("requestVote error:%v", err)
+								return
+							}
+							defer func(transport thrift.TTransport) {
+								err := transport.Close()
+								if err != nil {
+									log.Printf("transport error: %v", err)
+								}
+							}(transport)
+							if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
+								state.ToFollower(resp.Term)
+								return
+							}
+							if resp.VoteGranted {
+								atomic.AddUint32(&state.GetServerState().VolatileState.VoteNum, 1)
+							}
 						}
-					}(transport)
-					if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
-						state.ToFollower(resp.Term)
-						return
-					}
-					if resp.VoteGranted {
-						atomic.AddUint32(&state.GetServerState().VolatileState.VoteNum, 1)
-					}
-				}()
+					}()
+				}
 			}
 			wg.Wait()
 			log.Printf("actual:%d, expect:%d", state.GetServerState().VolatileState.VoteNum, state.GetMaxNum())
@@ -100,24 +109,26 @@ func Run() {
 					LeaderId: int64(state.GetServerState().ServerId),
 				}
 				var wg sync.WaitGroup
-				for id, ps := range state.GetServerState().Net.PeerServerMap {
-					wg.Add(1)
-					curPs := ps
-					tempId := id
-					go func() {
-						defer wg.Done()
-						resp, err := rpc.AppendEntriesByServer(tempId, curPs, appendEntriesReq, true)
-						if err != nil {
-							log.Printf(" AppendEntries error:%v", err)
-							return
-						}
-						if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
-							// 广播master心跳失败,可能是因为已经有新的master被选出，这里网络分区情况下可能导致算法不工作
-							// 假如有a,b,c 三个实例，b是主，a收不到b的心跳会发起选举投票，c收到后将自己状态切换为candidator并发起投票
-							// b收到c的投票后也切换成follower
-							state.ToFollower(resp.Term)
-						}
-					}()
+				for id, addr := range state.GetServerState().Conf.InnerAddrMap {
+					if addr != state.GetServerState().Net.ServerAddr {
+						wg.Add(1)
+						addrTemp := addr
+						tempId := id
+						go func() {
+							defer wg.Done()
+							resp, err := rpc.AppendEntriesByServer(tempId, addrTemp, appendEntriesReq, false)
+							if err != nil {
+								log.Printf(" AppendEntries error:%v", err)
+								return
+							}
+							if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
+								// 广播master心跳失败,可能是因为已经有新的master被选出，这里网络分区情况下可能导致算法不工作
+								// 假如有a,b,c 三个实例，b是主，a收不到b的心跳会发起选举投票，c收到后将自己状态切换为candidator并发起投票
+								// b收到c的投票后也切换成follower
+								state.ToFollower(resp.Term)
+							}
+						}()
+					}
 				}
 				wg.Wait()
 				log.Printf("notify followers i am leader success")

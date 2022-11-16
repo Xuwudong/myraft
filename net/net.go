@@ -9,9 +9,6 @@ type Net struct {
 	ServerAddr string
 	// 客户端-服务端通信addr
 	ClientAddr string
-
-	// 存活的对端服务列表
-	PeerServerMap map[int]*PeerServer
 }
 
 type PeerServer struct {

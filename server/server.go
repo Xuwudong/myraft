@@ -25,20 +25,16 @@ import (
 	"_9932xt/myraft/handler"
 	"_9932xt/myraft/heartbeat"
 	log2 "_9932xt/myraft/log"
-	"_9932xt/myraft/net"
-	"_9932xt/myraft/rpc"
 	"_9932xt/myraft/state"
 	"_9932xt/myraft/util"
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"github.com/apache/thrift/lib/go/thrift"
 	"log"
 	"os"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/apache/thrift/lib/go/thrift"
 )
 
 var raftHandler = handler.NewRaftHandler()
@@ -50,12 +46,12 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 	var clientTransport thrift.TServerTransport
 	state.GetServerState().ServerId = id
 	state.GetServerState().Conf = curConf
-	serverAddr, ok := curConf.InnerAddrMap[conf.Server+"."+strconv.FormatInt(int64(id), 10)]
+	serverAddr, ok := curConf.InnerAddrMap[(id)]
 	if !ok {
 		log.Fatalf("invalid id:%d", id)
 	}
 	state.GetServerState().Net.ServerAddr = serverAddr
-	clientAddr, ok := curConf.OuterAddrMap[conf.Server+"."+strconv.FormatInt(int64(id), 10)]
+	clientAddr, ok := curConf.OuterAddrMap[id]
 	if !ok {
 		log.Fatalf("invalid id:%d", id)
 	}
@@ -65,9 +61,9 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 	if err != nil {
 		log.Fatalf("initPersistenceStatus err:%v", err)
 	}
-	go func() {
-		registerPeerServer(transportFactory, protocolFactory, secure, cfg)
-	}()
+	//go func() {
+	//	registerPeerServer(transportFactory, protocolFactory, secure, cfg)
+	//}()
 
 	fmt.Printf("server state: %+v\n", state.GetServerState())
 
@@ -197,32 +193,29 @@ func initPersistenceStatus(curconf *conf.Conf, serverId int) error {
 	return nil
 }
 
-func registerPeerServer(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, secure bool, cfg *thrift.TConfiguration) {
-	for {
-		if len(state.GetServerState().Conf.InnerAddrMap) > len(state.GetServerState().Net.PeerServerMap) {
-			// 有client没有连上来
-			peerServerMap := make(map[int]*net.PeerServer)
-			for serverId, addr := range state.GetServerState().Conf.InnerAddrMap {
-				if addr != state.GetServerState().Net.ServerAddr {
-					idStr := strings.Replace(serverId, conf.Server+".", "", -1)
-					idd, _ := strconv.ParseInt(idStr, 10, 32)
-
-					_, transport, err := rpc.NewClient(transportFactory, protocolFactory, addr, secure, cfg)
-					if err != nil {
-						continue
-					}
-					//log.Printf("error new client: %v", err)
-					defer transport.Close()
-					_, ok := peerServerMap[int(idd)]
-					if !ok {
-						peerServerMap[int(idd)] = &net.PeerServer{
-							ServerAddr: addr,
-						}
-					}
-				}
-			}
-			state.GetServerState().Net.PeerServerMap = peerServerMap
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-}
+//func registerPeerServer(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, secure bool, cfg *thrift.TConfiguration) {
+//	for {
+//		if len(state.GetServerState().Conf.InnerAddrMap) > len(state.GetServerState().Net.PeerServerMap) {
+//			// 有client没有连上来
+//			peerServerMap := make(map[int]*net.PeerServer)
+//			for id, addr := range state.GetServerState().Conf.InnerAddrMap {
+//				if addr != state.GetServerState().Net.ServerAddr {
+//
+//					_, err := rpc.NewRaftServerClient(addr)
+//					if err != nil {
+//						time.Sleep(10 * time.Millisecond)
+//						continue
+//					}
+//					_, ok := peerServerMap[(id)]
+//					if !ok {
+//						peerServerMap[(id)] = &net.PeerServer{
+//							ServerAddr: addr,
+//						}
+//					}
+//				}
+//			}
+//			state.GetServerState().Net.PeerServerMap = peerServerMap
+//		}
+//		time.Sleep(500 * time.Millisecond)
+//	}
+//}

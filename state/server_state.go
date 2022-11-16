@@ -89,9 +89,11 @@ var masterVolatileStateLock sync.Mutex
 func InitMasterVolatileState() {
 	masterVolatileStateLock.Lock()
 	defer masterVolatileStateLock.Unlock()
-	for id, _ := range GetServerState().Net.PeerServerMap {
-		GetServerState().MasterVolatileState.NextIndexMap[id] = int64(len(GetServerState().PersistentState.Logs))
-		GetServerState().MasterVolatileState.MatchIndexMap[id] = 0
+	for id, _ := range GetServerState().Conf.InnerAddrMap {
+		if id != GetServerState().ServerId {
+			GetServerState().MasterVolatileState.NextIndexMap[id] = int64(len(GetServerState().PersistentState.Logs))
+			GetServerState().MasterVolatileState.MatchIndexMap[id] = 0
+		}
 	}
 }
 
@@ -113,7 +115,7 @@ func SetVolatileState(commitIndex, lastApplied int64) {
 
 // GetMaxNum 大多数选票计算方式
 func GetMaxNum() uint32 {
-	total := len(GetServerState().Net.PeerServerMap) + 1
+	total := len(GetServerState().Conf.InnerAddrMap)
 	return uint32(total/2 + 1)
 }
 
