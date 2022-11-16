@@ -3,13 +3,17 @@ package conf
 import (
 	"bufio"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
 const LogDor string = "logDir"
 const Server string = "server"
+const Term string = "term"
+const VotedFor string = "votedFor"
 
 type Conf struct {
 	LogDir       string
@@ -43,7 +47,7 @@ func ParseConf() (*Conf, error) {
 			innerAddr[key] = addrArr[0] + ":" + addrArr[1]
 			outerAddr[key] = addrArr[0] + ":" + addrArr[2]
 		} else {
-			log.Println("invalid conf")
+			log.Printf("invalid conf:%s\n", lineText)
 		}
 	}
 	conf.InnerAddrMap = innerAddr
@@ -51,4 +55,57 @@ func ParseConf() (*Conf, error) {
 	log.Printf("load conf:%+v \n", conf)
 	return conf, nil
 
+}
+
+func UpdateDataField(fileName string, field string, term, candidate int) error {
+	lineBytes, err := ioutil.ReadFile(fileName)
+	var lines []string
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		contents := string(lineBytes)
+		lines = strings.Split(contents, "\n")
+	}
+	var newLines []string
+
+	flag := false
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		arr := strings.Split(line, "=")
+		if len(arr) != 2 {
+			log.Printf("invalid conf:%s\n", line)
+		}
+		if arr[0] == field {
+			if field == Term {
+				arr[1] = strconv.Itoa(term)
+				line = strings.Join(arr, "=")
+				flag = true
+			} else if field == VotedFor {
+				arr[1] = strconv.Itoa(term) + "_" + strconv.Itoa(candidate)
+				line = strings.Join(arr, "=")
+				flag = true
+			}
+		}
+		newLines = append(newLines, line)
+	}
+	if !flag {
+		var line string
+		if field == Term {
+			line = field + "=" + strconv.Itoa(term)
+		} else if field == VotedFor {
+			line = field + "=" + strconv.Itoa(term) + "_" + strconv.Itoa(candidate)
+		}
+		//log.Printf("line:%s", line)
+		newLines = append(newLines, line)
+	}
+
+	file, err := os.OpenFile(fileName, os.O_WRONLY, 0666)
+	defer file.Close()
+	_, err = file.WriteString(strings.Join(newLines, "\n"))
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -4,12 +4,14 @@ import (
 	"_9932xt/myraft/gen-go/raft"
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLogParse(t *testing.T) {
-	log := &Log{
+	log := &raft.LogEntry{
 		Command: &raft.Command{
-			Entry: &raft.Entry{
+			Entity: &raft.Entity{
 				Key:   "1",
 				Value: 1,
 			},
@@ -24,4 +26,12 @@ func TestLogParse(t *testing.T) {
 	fmt.Println(err)
 	fmt.Println(log)
 
+}
+
+func TestDelete(t *testing.T) {
+	logDir := "/tmp/myraft/"
+	logFilePath := logDir + "1.log"
+
+	err := DeleteFrom(11, logFilePath)
+	assert.Nil(t, err)
 }

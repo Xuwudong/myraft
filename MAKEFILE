@@ -1,0 +1,7 @@
+
+
+lint:
+	go mod tidy
+	goimports -w .
+	go fmt ./...
+	go vet ./...

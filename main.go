@@ -21,13 +21,15 @@ package main
 
 import (
 	conf2 "_9932xt/myraft/conf"
+	"_9932xt/myraft/net"
 	server2 "_9932xt/myraft/server"
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/apache/thrift/lib/go/thrift"
 	"log"
 	"os"
+
+	"github.com/apache/thrift/lib/go/thrift"
 )
 
 func Usage() {
@@ -47,45 +49,43 @@ func main() {
 
 	flag.Parse()
 
-	var protocolFactory thrift.TProtocolFactory
 	switch *protocol {
 	case "compact":
-		protocolFactory = thrift.NewTCompactProtocolFactoryConf(nil)
+		net.ProtocolFactory = thrift.NewTCompactProtocolFactoryConf(nil)
 	case "simplejson":
-		protocolFactory = thrift.NewTSimpleJSONProtocolFactoryConf(nil)
+		net.ProtocolFactory = thrift.NewTSimpleJSONProtocolFactoryConf(nil)
 	case "json":
-		protocolFactory = thrift.NewTJSONProtocolFactory()
+		net.ProtocolFactory = thrift.NewTJSONProtocolFactory()
 	case "binary", "":
-		protocolFactory = thrift.NewTBinaryProtocolFactoryConf(nil)
+		net.ProtocolFactory = thrift.NewTBinaryProtocolFactoryConf(nil)
 	default:
 		fmt.Fprint(os.Stderr, "Invalid protocol specified", protocol, "\n")
 		Usage()
 		os.Exit(1)
 	}
 
-	var transportFactory thrift.TTransportFactory
-	cfg := &thrift.TConfiguration{
+	net.Cfg = &thrift.TConfiguration{
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
 	}
 	if *buffered {
-		transportFactory = thrift.NewTBufferedTransportFactory(8192)
+		net.TransportFactory = thrift.NewTBufferedTransportFactory(8192)
 	} else {
-		transportFactory = thrift.NewTTransportFactory()
+		net.TransportFactory = thrift.NewTTransportFactory()
 	}
 
 	if *framed {
-		transportFactory = thrift.NewTFramedTransportFactoryConf(transportFactory, cfg)
+		net.TransportFactory = thrift.NewTFramedTransportFactoryConf(net.TransportFactory, net.Cfg)
 	}
 
 	conf, err := conf2.ParseConf()
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	net.Secure = *secure
 	if *server {
-		if err := server2.RunServer(transportFactory, protocolFactory, *secure, *id, conf, cfg); err != nil {
+		if err := server2.RunServer(net.TransportFactory, net.ProtocolFactory, *secure, *id, conf, net.Cfg); err != nil {
 			fmt.Println("error running server:", err)
 		}
 	}

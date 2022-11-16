@@ -21,11 +21,12 @@ package rpc
 
 import (
 	"_9932xt/myraft/gen-go/raft"
+
 	"github.com/apache/thrift/lib/go/thrift"
 )
 
 func NewClient(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, addr string,
-	secure bool, cfg *thrift.TConfiguration) (*raft.RaftServerClient, error) {
+	secure bool, cfg *thrift.TConfiguration) (*raft.RaftServerClient, thrift.TTransport, error) {
 	var transport thrift.TTransport
 	if secure {
 		transport = thrift.NewTSSLSocketConf(addr, cfg)
@@ -34,13 +35,34 @@ func NewClient(transportFactory thrift.TTransportFactory, protocolFactory thrift
 	}
 	transport, err := transportFactory.GetTransport(transport)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	defer transport.Close()
+	//defer transport.Close()
 	if err := transport.Open(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	iprot := protocolFactory.GetProtocol(transport)
 	oprot := protocolFactory.GetProtocol(transport)
-	return raft.NewRaftServerClient(thrift.NewTStandardClient(iprot, oprot)), nil
+	return raft.NewRaftServerClient(thrift.NewTStandardClient(iprot, oprot)), transport, nil
+}
+
+func NewClientServerClient(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, addr string,
+	secure bool, cfg *thrift.TConfiguration) (*raft.ClientRaftServerClient, thrift.TTransport, error) {
+	var transport thrift.TTransport
+	if secure {
+		transport = thrift.NewTSSLSocketConf(addr, cfg)
+	} else {
+		transport = thrift.NewTSocketConf(addr, cfg)
+	}
+	transport, err := transportFactory.GetTransport(transport)
+	if err != nil {
+		return nil, nil, err
+	}
+	//defer transport.Close()
+	if err := transport.Open(); err != nil {
+		return nil, nil, err
+	}
+	iprot := protocolFactory.GetProtocol(transport)
+	oprot := protocolFactory.GetProtocol(transport)
+	return raft.NewClientRaftServerClient(thrift.NewTStandardClient(iprot, oprot)), transport, nil
 }
