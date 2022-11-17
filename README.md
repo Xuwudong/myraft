@@ -11,7 +11,7 @@
     thrift -r --gen go thrift/raft.thrift
     thrift -r --gen go thrift/client_raft.thrift
 ```
-2. 系统配置文件在conf/raft.conf,默认三个实例，可以自行增加或修改接口，注意需要手动创建系统数据目录：/tmp/myraft
+2. 系统配置文件在conf/raft.conf,默认三个实例，可以自行增加或修改接口，注意需要手动创建系统数据目录：/var/myraft
 3. 假如没有修改配置，则使用以下shell命令启动服务
 ```shell
     # id参数指的是实例编号，对应raft.conf配置中的server.#{id}
