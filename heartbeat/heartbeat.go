@@ -37,14 +37,14 @@ func Run() {
 						if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
 							state.ToFollower(resp.Term)
 						}
+						state.HeartBeatChan <- "heartbeat success"
 					}()
 				}
-				state.HeartBeatChan <- "heartbeat success"
 			}
-			time.Sleep(2000 * time.Millisecond)
-			log.Printf("number of goroutines:%d", runtime.NumGoroutine())
-			bytes, _ := json.Marshal(state.GetServerState())
-			log.Printf("serverState:%s\n", string(bytes))
 		}
+		time.Sleep(2000 * time.Millisecond)
+		log.Printf("number of goroutines:%d", runtime.NumGoroutine())
+		bytes, _ := json.Marshal(state.GetServerState())
+		log.Printf("serverState:%s\n", string(bytes))
 	}
 }
