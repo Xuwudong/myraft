@@ -26,8 +26,10 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -48,6 +50,8 @@ func main() {
 	id := flag.Int("id", 1, "server_id")
 
 	flag.Parse()
+
+	initLog(*id)
 
 	switch *protocol {
 	case "compact":
@@ -89,4 +93,22 @@ func main() {
 			fmt.Println("error running server:", err)
 		}
 	}
+}
+
+func initLog(id int) {
+	f, err := os.OpenFile("log"+strconv.Itoa(id)+".log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+	if err != nil {
+		return
+	}
+	//defer func() {
+	//	f.Close()
+	//}()
+
+	// 组合一下即可，os.Stdout代表标准输出流
+	multiWriter := io.MultiWriter(os.Stdout, f)
+	log.SetOutput(multiWriter)
+
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	log.Printf("start server:%d \n", id)
 }
