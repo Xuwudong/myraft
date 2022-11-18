@@ -100,13 +100,15 @@ func initLog(id int) {
 	if err != nil {
 		return
 	}
-	defer func() {
-		f.Close()
-	}()
+	//defer func() {
+	//	f.Close()
+	//}()
 
 	// 组合一下即可，os.Stdout代表标准输出流
 	multiWriter := io.MultiWriter(os.Stdout, f)
 	log.SetOutput(multiWriter)
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	log.Printf("start server:%d \n", id)
 }
