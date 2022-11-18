@@ -1,10 +1,10 @@
 package heartbeat
 
 import (
-	"_9932xt/myraft/gen-go/raft"
-	"_9932xt/myraft/rpc"
-	"_9932xt/myraft/state"
 	"encoding/json"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/rpc"
+	"github.com/Xuwudong/myraft/state"
 	"log"
 	_ "net/http/pprof"
 	"runtime"

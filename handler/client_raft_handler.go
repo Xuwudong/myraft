@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"_9932xt/myraft/gen-go/raft"
-	log2 "_9932xt/myraft/log"
-	"_9932xt/myraft/machine"
-	"_9932xt/myraft/service"
-	"_9932xt/myraft/state"
 	"context"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	log2 "github.com/Xuwudong/myraft/log"
+	"github.com/Xuwudong/myraft/machine"
+	"github.com/Xuwudong/myraft/service"
+	"github.com/Xuwudong/myraft/state"
 	"log"
 )
 

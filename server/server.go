@@ -20,16 +20,16 @@ package server
  */
 
 import (
-	"_9932xt/myraft/conf"
-	"_9932xt/myraft/gen-go/raft"
-	"_9932xt/myraft/handler"
-	"_9932xt/myraft/heartbeat"
-	log2 "_9932xt/myraft/log"
-	"_9932xt/myraft/state"
-	"_9932xt/myraft/util"
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"github.com/Xuwudong/myraft/conf"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/handler"
+	"github.com/Xuwudong/myraft/heartbeat"
+	log2 "github.com/Xuwudong/myraft/log"
+	"github.com/Xuwudong/myraft/state"
+	"github.com/Xuwudong/myraft/util"
 	"github.com/apache/thrift/lib/go/thrift"
 	"log"
 	"os"

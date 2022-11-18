@@ -1,11 +1,11 @@
 package server
 
 import (
-	"_9932xt/myraft/gen-go/raft"
-	"_9932xt/myraft/net"
-	"_9932xt/myraft/rpc"
-	"_9932xt/myraft/state"
 	"context"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/net"
+	"github.com/Xuwudong/myraft/rpc"
+	"github.com/Xuwudong/myraft/state"
 	"log"
 	"math/rand"
 	"sync"

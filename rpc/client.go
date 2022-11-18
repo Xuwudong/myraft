@@ -20,8 +20,8 @@ package rpc
  */
 
 import (
-	"_9932xt/myraft/gen-go/raft"
-	"_9932xt/myraft/net"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/net"
 	"github.com/apache/thrift/lib/go/thrift"
 	"log"
 )

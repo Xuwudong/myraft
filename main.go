@@ -20,12 +20,12 @@ package main
  */
 
 import (
-	conf2 "_9932xt/myraft/conf"
-	"_9932xt/myraft/net"
-	server2 "_9932xt/myraft/server"
 	"crypto/tls"
 	"flag"
 	"fmt"
+	conf2 "github.com/Xuwudong/myraft/conf"
+	"github.com/Xuwudong/myraft/net"
+	server2 "github.com/Xuwudong/myraft/server"
 	"io"
 	"log"
 	"os"

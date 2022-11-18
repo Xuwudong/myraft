@@ -1,9 +1,9 @@
 package state
 
 import (
-	"_9932xt/myraft/conf"
-	"_9932xt/myraft/gen-go/raft"
-	"_9932xt/myraft/net"
+	"github.com/Xuwudong/myraft/conf"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/net"
 	"log"
 	"strconv"
 	"sync"

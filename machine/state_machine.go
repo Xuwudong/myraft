@@ -1,7 +1,7 @@
 package machine
 
 import (
-	"_9932xt/myraft/state"
+	"github.com/Xuwudong/myraft/state"
 	"log"
 	"sync"
 )

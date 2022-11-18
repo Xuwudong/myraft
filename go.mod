@@ -1,4 +1,4 @@
-module _9932xt/myraft
+module github.com/Xuwudong/myraft
 
 go 1.18
 

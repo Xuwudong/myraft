@@ -1,11 +1,11 @@
 package client
 
 import (
-	"_9932xt/myraft/gen-go/raft"
-	"_9932xt/myraft/rpc"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/rpc"
 	"log"
 	"math/rand"
 	"strconv"

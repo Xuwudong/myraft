@@ -1,10 +1,10 @@
 package rpc
 
 import (
-	"_9932xt/myraft/errno"
-	"_9932xt/myraft/gen-go/raft"
-	"_9932xt/myraft/net"
 	"context"
+	"github.com/Xuwudong/myraft/errno"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/net"
 	"log"
 	"time"
 
