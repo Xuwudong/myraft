@@ -1,14 +1,16 @@
 package log
 
 import (
+	"context"
 	"encoding/json"
-	"github.com/Xuwudong/myraft/gen-go/raft"
-	"github.com/Xuwudong/myraft/state"
 	"io/ioutil"
-	"log"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/logger"
+	"github.com/Xuwudong/myraft/state"
 )
 
 func ParseLog(logLine string) (*raft.LogEntry, error) {
@@ -29,7 +31,7 @@ func ToLogString(log *raft.LogEntry) (string, error) {
 	return string(bytes) + "\n", nil
 }
 
-func AppendLog(logs []*raft.LogEntry) (int64, int64, error) {
+func AppendLog(ctx context.Context, logs []*raft.LogEntry) (int64, int64, error) {
 	var logsStr string
 	for _, log := range logs {
 		logStr, err := ToLogString(log)
@@ -47,7 +49,7 @@ func AppendLog(logs []*raft.LogEntry) (int64, int64, error) {
 	defer func(f *os.File) {
 		err := f.Close()
 		if err != nil {
-			log.Println(err)
+			logger.WithContext(ctx).Error(err)
 		}
 	}(f)
 
@@ -64,11 +66,11 @@ func AppendLog(logs []*raft.LogEntry) (int64, int64, error) {
 	return int64(preLogIndex), preLogTerm, nil
 }
 
-func DeleteFrom(index int64, logFilePath string) error {
+func DeleteFrom(ctx context.Context, index int64, logFilePath string) error {
 	lineBytes, err := ioutil.ReadFile(logFilePath)
 	var lines []string
 	if err != nil {
-		log.Println(err)
+		logger.WithContext(ctx).Error(err)
 		return err
 	} else {
 		contents := string(lineBytes)
@@ -93,7 +95,7 @@ func DeleteFrom(index int64, logFilePath string) error {
 	defer func(f *os.File) {
 		err := f.Close()
 		if err != nil {
-			log.Println(err)
+			logger.WithContext(ctx).Error(err)
 		}
 	}(f)
 	if len(newLines) > 0 {

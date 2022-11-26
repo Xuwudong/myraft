@@ -1,14 +1,14 @@
 package heartbeat
 
 import (
-	"encoding/json"
+	"context"
+	_ "net/http/pprof"
+	"time"
+
 	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/rpc"
 	"github.com/Xuwudong/myraft/state"
-	"log"
-	_ "net/http/pprof"
-	"runtime"
-	"time"
 )
 
 func Run() {
@@ -22,16 +22,18 @@ func Run() {
 						Term:         state.GetServerState().PersistentState.CurrentTerm,
 						LeaderId:     int64(state.GetServerState().ServerId),
 						LeaderCommit: state.GetServerState().VolatileState.CommitIndex,
+						//PreLogIndex:  int64(len(state.GetServerState().PersistentState.Logs) - 1),
+						//PreLogTerm:   state.GetServerState().PersistentState.Logs[int64(len(state.GetServerState().PersistentState.Logs)-1)].Term,
 					}
 					go func() {
-						log.Printf("leader:%d send heartbeat to follower:%d，req:%v\n", state.GetServerState().ServerId, idTemp, req)
-						resp, err := rpc.AppendEntriesByServer(idTemp, addrTemp, req, false)
+						logger.Debugf("leader:%d send heartbeat to follower:%d，req:%v\n", state.GetServerState().ServerId, idTemp, req)
+						resp, err := rpc.AppendEntriesByServer(context.Background(), idTemp, addrTemp, req, false)
 						if err != nil {
 							//e, ok := err.(*errno.NewClientErr)
 							//if ok && e != nil {
 							//	//delete(state.GetServerState().Net.PeerServerMap, idTemp)
 							//}
-							log.Printf("heart beat to %d err: %v", idTemp, err)
+							logger.Errorf("heart beat to %d err: %v", idTemp, err)
 							return
 						}
 						if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
@@ -42,9 +44,9 @@ func Run() {
 				}
 			}
 		}
-		time.Sleep(2000 * time.Millisecond)
-		log.Printf("number of goroutines:%d", runtime.NumGoroutine())
-		bytes, _ := json.Marshal(state.GetServerState())
-		log.Printf("serverState:%s\n", string(bytes))
+		time.Sleep(10 * time.Millisecond)
+		//logger.WithContext(ctx).Printf("number of goroutines:%d", runtime.NumGoroutine())
+		//bytes, _ := json.Marshal(state.GetServerState())
+		//logger.Printf("serverState:%s", string(bytes))
 	}
 }

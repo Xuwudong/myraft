@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/Xuwudong/myraft/gen-go/raft"
-	"github.com/Xuwudong/myraft/rpc"
-	"log"
 	"math/rand"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/logger"
+	"github.com/Xuwudong/myraft/pool"
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/stretchr/testify/assert"
@@ -32,8 +33,8 @@ func TestCommand(t *testing.T) {
 	var err error
 	var tr thrift.TTransport
 	for {
-		client, tr, err = rpc.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
-			"localhost:9091", false, &thrift.TConfiguration{
+		client, tr, err = pool.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
+			"localhost:9090", false, &thrift.TConfiguration{
 				TLSConfig: &tls.Config{
 					InsecureSkipVerify: true,
 				},
@@ -41,7 +42,7 @@ func TestCommand(t *testing.T) {
 		if err == nil {
 			break
 		}
-		log.Printf("error new client: %v", err)
+		logger.Printf("error new client: %v", err)
 	}
 	defer tr.Close()
 	resp, err := client.DoCommand(context.Background(), wReq)
@@ -69,8 +70,8 @@ func TestRead(t *testing.T) {
 	var err error
 	var tr thrift.TTransport
 	for {
-		client, tr, err = rpc.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
-			"localhost:9091", false, &thrift.TConfiguration{
+		client, tr, err = pool.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
+			"localhost:9092", false, &thrift.TConfiguration{
 				TLSConfig: &tls.Config{
 					InsecureSkipVerify: true,
 				},
@@ -78,7 +79,7 @@ func TestRead(t *testing.T) {
 		if err == nil {
 			break
 		}
-		log.Printf("error new client: %v", err)
+		logger.Printf("error new client: %v", err)
 	}
 	defer tr.Close()
 
@@ -86,13 +87,13 @@ func TestRead(t *testing.T) {
 		Command: &raft.Command{
 			Opt: raft.Opt_Read,
 			Entity: &raft.Entity{
-				Key: "3740",
+				Key: "9765",
 			},
 		},
 	}
 	resp, err := client.DoCommand(context.Background(), rReq)
 	assert.Nil(t, err)
 	assert.True(t, resp.Succuess == true)
-	assert.True(t, resp.Value == 3740)
+	assert.True(t, resp.Value == 9765)
 	fmt.Println(resp)
 }

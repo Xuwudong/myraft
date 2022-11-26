@@ -21,13 +21,14 @@ package handler
 
 import (
 	"context"
-	"github.com/Xuwudong/myraft/gen-go/raft"
-	log2 "github.com/Xuwudong/myraft/log"
-	"github.com/Xuwudong/myraft/state"
-	"log"
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	log2 "github.com/Xuwudong/myraft/log"
+	"github.com/Xuwudong/myraft/logger"
+	"github.com/Xuwudong/myraft/state"
 )
 
 type RaftHandler struct {
@@ -41,8 +42,9 @@ var appendMutex sync.Mutex
 
 func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntriesReq) (resp *raft.AppendEntriesResp, _err error) {
 	defer func() {
-		log.Printf("appendEntries req:%v", req)
-		log.Printf("appendEntries resp:%v", resp)
+		if len(req.Entries) > 0 {
+			logger.WithContext(ctx).Printf("appendEntries req:%v, resp:%v", req, resp)
+		}
 	}()
 	resp = &raft.AppendEntriesResp{
 		Term: state.GetServerState().PersistentState.CurrentTerm,
@@ -60,6 +62,10 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 	if len(req.Entries) == 0 {
 		// 心跳记得 ch <- "done",保证不超时
 		state.HeartBeatChan <- "receive heartbeat"
+		state.GetServerState().SlaveVolatileState.LeaderId = req.LeaderId
+		if state.GetServerState().VolatileState.CommitIndex < req.LeaderCommit {
+			atomic.StoreInt64(&state.GetServerState().VolatileState.CommitIndex, req.LeaderCommit)
+		}
 		resp.Succuess = true
 	} else {
 		appendMutex.Lock()
@@ -88,9 +94,9 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 				logDir := state.GetServerState().Conf.LogDir
 				logFilePath := logDir + strconv.FormatInt(int64(state.GetServerState().ServerId), 10) + ".log"
 
-				err := log2.DeleteFrom(i, logFilePath)
+				err := log2.DeleteFrom(ctx, i, logFilePath)
 				if err != nil {
-					log.Printf("deleteLogFrom %v", err)
+					logger.WithContext(ctx).Errorf("deleteLogFrom %v", err)
 					resp.Succuess = false
 					return resp, nil
 				}
@@ -110,7 +116,7 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 						myLog.Command.Entity.Key == entry.Command.Entity.Key &&
 						myLog.Command.Entity.Value == myLog.Command.Entity.Value {
 						// 去重
-						log.Printf("reduplicate log entry:%v", entry)
+						logger.WithContext(ctx).Infof("reduplicate log entry:%v", entry)
 						j++
 						continue
 					}
@@ -120,19 +126,17 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 				}
 			}
 		}
-		_, _, err := log2.AppendLog(newEntries)
+		_, _, err := log2.AppendLog(ctx, newEntries)
 		if err != nil {
-			log.Printf("AppendLog %v", err)
+			logger.WithContext(ctx).Errorf("AppendLog %v", err)
 			resp.Succuess = false
 			return resp, nil
 		}
-		if state.GetServerState().VolatileState.CommitIndex < req.LeaderCommit {
-			min := req.LeaderCommit
-			if req.PreLogIndex+int64(len(req.Entries)) < req.LeaderCommit {
-				min = req.PreLogIndex + int64(len(req.Entries))
-			}
-			state.GetServerState().VolatileState.CommitIndex = min
+		min := req.LeaderCommit
+		if req.PreLogIndex+int64(len(req.Entries)) < req.LeaderCommit {
+			min = req.PreLogIndex + int64(len(req.Entries))
 		}
+		atomic.StoreInt64(&state.GetServerState().VolatileState.CommitIndex, min)
 		resp.Succuess = true
 	}
 	return resp, nil
@@ -141,10 +145,12 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 var voteMutex sync.Mutex
 
 func (p *RaftHandler) RequestVote(ctx context.Context, req *raft.RequestVoteReq) (*raft.RequestVoteResp, error) {
-	log.Printf("requestVote req:%v", req)
 	resp := &raft.RequestVoteResp{
 		Term: state.GetServerState().PersistentState.CurrentTerm,
 	}
+	defer func() {
+		logger.WithContext(ctx).Printf("requestVote req:%v, resp:%v", req, resp)
+	}()
 	defer voteMutex.Unlock()
 	voteMutex.Lock()
 	if req.Term < state.GetServerState().PersistentState.CurrentTerm {
@@ -168,11 +174,10 @@ func (p *RaftHandler) RequestVote(ctx context.Context, req *raft.RequestVoteReq)
 			atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
 			err := state.SetVotedFor(int(req.Term), int(req.CandidateId))
 			if err != nil {
-				log.Printf("SetVotedFor error:%v", err)
+				logger.WithContext(ctx).Errorf("SetVotedFor error:%v", err)
 				resp.VoteGranted = false
 			}
 		}
 	}
-	log.Printf("requestVote resp:%v\n", resp)
 	return resp, nil
 }

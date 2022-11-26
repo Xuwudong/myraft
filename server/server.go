@@ -23,18 +23,21 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/Xuwudong/myraft/conf"
 	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/handler"
 	"github.com/Xuwudong/myraft/heartbeat"
 	log2 "github.com/Xuwudong/myraft/log"
+	"github.com/Xuwudong/myraft/logger"
+	"github.com/Xuwudong/myraft/middleware"
+	"github.com/Xuwudong/myraft/pool"
 	"github.com/Xuwudong/myraft/state"
 	"github.com/Xuwudong/myraft/util"
 	"github.com/apache/thrift/lib/go/thrift"
-	"log"
-	"os"
-	"strconv"
-	"strings"
 )
 
 var raftHandler = handler.NewRaftHandler()
@@ -48,19 +51,26 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 	state.GetServerState().Conf = curConf
 	serverAddr, ok := curConf.InnerAddrMap[(id)]
 	if !ok {
-		log.Fatalf("invalid id:%d", id)
+		logger.Fatalf("invalid id:%d", id)
 	}
 	state.GetServerState().Net.ServerAddr = serverAddr
 	clientAddr, ok := curConf.OuterAddrMap[id]
 	if !ok {
-		log.Fatalf("invalid id:%d", id)
+		logger.Fatalf("invalid id:%d", id)
 	}
 	state.GetServerState().Net.ClientAddr = clientAddr
 
 	err := initPersistenceStatus(curConf, state.GetServerState().ServerId)
 	if err != nil {
-		log.Fatalf("initPersistenceStatus err:%v", err)
+		logger.Fatalf("initPersistenceStatus err:%v", err)
 	}
+	peerServers := make([]string, 0)
+	for _, addr := range curConf.InnerAddrMap {
+		if addr != state.GetServerState().Net.ServerAddr {
+			peerServers = append(peerServers, addr)
+		}
+	}
+	state.GetServerState().VolatileState.PeerServers = peerServers
 	//go func() {
 	//	registerPeerServer(transportFactory, protocolFactory, secure, cfg)
 	//}()
@@ -86,10 +96,14 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 	}
 	fmt.Printf("%T\n", transport)
 	processor := raft.NewRaftServerProcessor(raftHandler)
-	clientProcessor := raft.NewClientRaftServerProcessor(clientRaftHandler)
-	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
-	clientServer := thrift.NewTSimpleServer4(clientProcessor, clientTransport, transportFactory, protocolFactory)
+	wrapper := thrift.WrapProcessor(processor, middleware.TrackIdProcessorMiddleware())
+	server := thrift.NewTSimpleServer4(wrapper, transport, transportFactory, protocolFactory)
 
+	clientProcessor := raft.NewClientRaftServerProcessor(clientRaftHandler)
+	cwrapper := thrift.WrapProcessor(clientProcessor, middleware.TrackIdProcessorMiddleware())
+	clientServer := thrift.NewTSimpleServer4(cwrapper, clientTransport, transportFactory, protocolFactory)
+
+	pool.Init(state.GetServerState().VolatileState.PeerServers)
 	go func() {
 		Run()
 	}()
@@ -97,13 +111,13 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 		heartbeat.Run()
 	}()
 	go func() {
-		fmt.Println("Starting myraft clientServer... on ", clientAddr)
+		logger.Infof("Starting myraft clientServer... on ", clientAddr)
 		err := clientServer.Serve()
 		if err != nil {
-			log.Fatalf("client server err:%v", err)
+			logger.Fatalf("client server err:%v", err)
 		}
 	}()
-	fmt.Println("Starting myraft server... on ", serverAddr)
+	logger.Infof("Starting myraft server... on ", serverAddr)
 	return server.Serve()
 }
 
@@ -113,13 +127,13 @@ func initPersistenceStatus(curconf *conf.Conf, serverId int) error {
 	if util.FileIsExist(logFilePath) {
 		logFile, err := os.Open(logFilePath)
 		if err != nil {
-			log.Println(err)
+			logger.Error(err)
 			return err
 		}
 		defer func(logFile *os.File) {
 			err := logFile.Close()
 			if err != nil {
-				log.Println(err)
+				logger.Error(err)
 			}
 		}(logFile)
 		scanner := bufio.NewScanner(logFile)
@@ -144,13 +158,13 @@ func initPersistenceStatus(curconf *conf.Conf, serverId int) error {
 	if util.FileIsExist(dataFilePath) {
 		dataFile, err := os.Open(dataFilePath)
 		if err != nil {
-			log.Println(err)
+			logger.Error(err)
 			return err
 		}
 		defer func(dataFile *os.File) {
 			err := dataFile.Close()
 			if err != nil {
-				log.Println(err)
+				logger.Error(err)
 			}
 		}(dataFile)
 		scanner := bufio.NewScanner(dataFile)
@@ -158,7 +172,7 @@ func initPersistenceStatus(curconf *conf.Conf, serverId int) error {
 			lineText := scanner.Text()
 			arr := strings.Split(lineText, "=")
 			if len(arr) != 2 {
-				log.Printf("invalid config:%s\n", lineText)
+				logger.Errorf("invalid config:%s\n", lineText)
 			}
 			if arr[0] == conf.Term {
 				currentTerm, err := strconv.ParseInt(arr[1], 10, 64)
@@ -181,7 +195,7 @@ func initPersistenceStatus(curconf *conf.Conf, serverId int) error {
 					Candidate: int(candidate),
 				}
 			} else {
-				log.Println("invalid config:", lineText)
+				logger.Error("invalid config:", lineText)
 			}
 		}
 	} else {

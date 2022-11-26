@@ -2,17 +2,16 @@ package server
 
 import (
 	"context"
-	"github.com/Xuwudong/myraft/gen-go/raft"
-	"github.com/Xuwudong/myraft/net"
-	"github.com/Xuwudong/myraft/rpc"
-	"github.com/Xuwudong/myraft/state"
-	"log"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/thrift/lib/go/thrift"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/logger"
+	"github.com/Xuwudong/myraft/pool"
+	"github.com/Xuwudong/myraft/rpc"
+	"github.com/Xuwudong/myraft/state"
 )
 
 func Run() {
@@ -22,7 +21,7 @@ func Run() {
 	for {
 		select {
 		case res := <-state.HeartBeatChan:
-			log.Printf("receive msg:%s\n", res)
+			logger.Debugf("receive msg:%s\n", res)
 			// 重置定时器
 			ranTime = rand.Intn(5000) + 5000
 			timeout, _ = context.WithTimeout(context.Background(), time.Millisecond*time.Duration(ranTime))
@@ -35,10 +34,10 @@ func Run() {
 			state.GetServerState().Role = raft.Role_Candidater
 			err := state.SetTerm(int(state.GetServerState().PersistentState.CurrentTerm + 1))
 			if err != nil {
-				log.Printf("setTerm error:%v", err)
+				logger.Errorf("setTerm error:%v", err)
 				continue
 			}
-			log.Printf("start election,serverId: %d, term:%d", state.GetServerState().ServerId, state.GetServerState().PersistentState.CurrentTerm)
+			logger.Infof("start election,serverId: %d, term:%d", state.GetServerState().ServerId, state.GetServerState().PersistentState.CurrentTerm)
 
 			lastLogTerm, lastLogIndex := state.GetLastLogMsg()
 
@@ -60,33 +59,38 @@ func Run() {
 					go func() {
 						defer wg.Done()
 						var (
-							client    *raft.RaftServerClient
-							transport thrift.TTransport
+							client *pool.Client
 						)
 						retry := 0
 						for {
-							client, transport, err = rpc.NewClient(net.TransportFactory, net.ProtocolFactory, addrTemp, net.Secure, net.Cfg)
+							client, err = pool.GetClientByServer(addrTemp)
 							if err == nil {
 								break
 							}
-							log.Printf("error new client: %v", err)
+							logger.Errorf("error get client: %v", err)
 							retry++
 							if retry > 5 {
 								break
 							}
 						}
 						if client != nil {
-							resp, err := rpc.RequestVote(client, context.Background(), requestVoteReq)
+							defer func(client *pool.Client) {
+								err := pool.Return(client)
+								if err != nil {
+									logger.Errorf("Return error:%v", err)
+								}
+							}(client)
+							resp, err := rpc.RequestVote(client.Client, context.Background(), requestVoteReq)
 							if err != nil {
-								log.Printf("requestVote error:%v", err)
+								logger.Errorf("requestVote error:%v", err)
+								defer func() {
+									err2 := pool.Recycle(client)
+									if err2 != nil {
+										logger.Errorf("recycle err:%v", err2)
+									}
+								}()
 								return
 							}
-							defer func(transport thrift.TTransport) {
-								err := transport.Close()
-								if err != nil {
-									log.Printf("transport error: %v", err)
-								}
-							}(transport)
 							if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
 								state.ToFollower(resp.Term)
 								return
@@ -99,10 +103,10 @@ func Run() {
 				}
 			}
 			wg.Wait()
-			log.Printf("actual:%d, expect:%d", state.GetServerState().VolatileState.VoteNum, state.GetMaxNum())
+			logger.Infof("actual:%d, expect:%d", state.GetServerState().VolatileState.VoteNum, state.GetMaxNum())
 			if state.GetServerState().VolatileState.VoteNum >= state.GetMaxNum() {
 				state.GetServerState().Role = raft.Role_Leader
-				log.Printf("i am coming to leader:%d\n", state.GetServerState().ServerId)
+				logger.Infof("i am coming to leader:%d\n", state.GetServerState().ServerId)
 				// 广播master心跳
 				appendEntriesReq := &raft.AppendEntriesReq{
 					Term:     state.GetServerState().PersistentState.CurrentTerm,
@@ -116,9 +120,9 @@ func Run() {
 						tempId := id
 						go func() {
 							defer wg.Done()
-							resp, err := rpc.AppendEntriesByServer(tempId, addrTemp, appendEntriesReq, false)
+							resp, err := rpc.AppendEntriesByServer(context.Background(), tempId, addrTemp, appendEntriesReq, false)
 							if err != nil {
-								log.Printf(" AppendEntries error:%v", err)
+								logger.Errorf(" AppendEntries error:%v", err)
 								return
 							}
 							if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
@@ -131,9 +135,9 @@ func Run() {
 					}
 				}
 				wg.Wait()
-				log.Printf("notify followers i am leader success")
+				logger.Printf("notify followers i am leader success")
 				if state.GetServerState().Role == raft.Role_Leader {
-					log.Printf("send empty command start")
+					logger.Printf("send empty command start")
 					go func() {
 						state.HeartBeatChan <- "master selected"
 					}()
@@ -150,13 +154,13 @@ func Run() {
 							},
 						})
 						if err != nil {
-							log.Printf("send empty command error:%v\n", err)
+							logger.Errorf("send empty command error:%v\n", err)
 							continue
 						}
 						if !resp.Succuess {
 							continue
 						}
-						log.Printf("send empty command success")
+						logger.Printf("send empty command success")
 						//atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
 						break
 					}

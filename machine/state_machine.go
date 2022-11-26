@@ -1,46 +1,54 @@
 package machine
 
 import (
-	"github.com/Xuwudong/myraft/state"
-	"log"
+	"context"
 	"sync"
+	"sync/atomic"
+
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/logger"
+	"github.com/Xuwudong/myraft/state"
 )
 
-var stateMachine = &StateMachine{
-	KVMap: make(map[string]int64, 0),
-}
+var stateMachine = &StateMachine{}
 
 var once sync.Once
 
 type StateMachine struct {
-	KVMap map[string]int64
+	KVMap sync.Map
 }
 
 func GetStateMachine() *StateMachine {
 	return stateMachine
 }
 
-func Apply() error {
-	err := Init()
+func Apply(ctx context.Context) error {
+	err := Init(ctx)
 	if err != nil {
 		return err
 	}
-	ApplyFromIndex(int(state.GetServerState().VolatileState.CommitIndex) + 1)
+	if state.GetServerState().VolatileState.CommitIndex > state.GetServerState().VolatileState.LastApplied {
+		ApplyFromIndex(ctx, state.GetServerState().VolatileState.LastApplied+1)
+	}
 	return nil
 }
 
-func Init() error {
+func Init(ctx context.Context) error {
 	once.Do(func() {
-		ApplyFromIndex(0)
-		log.Println("init state machine finished")
+		ApplyFromIndex(ctx, 0)
+		logger.Info("init state machine finished")
 	})
 	return nil
 }
 
-func ApplyFromIndex(i int) {
-	for ; i < len(state.GetServerState().PersistentState.Logs); i++ {
-		entity := state.GetServerState().PersistentState.Logs[i].Command.Entity
-		stateMachine.KVMap[entity.Key] = entity.Value
+func ApplyFromIndex(ctx context.Context, i int64) {
+	var entity *raft.Entity
+	for ; i <= state.GetServerState().VolatileState.CommitIndex && i < int64(len(state.GetServerState().PersistentState.Logs)); i++ {
+		entity = state.GetServerState().PersistentState.Logs[i].Command.Entity
+		stateMachine.KVMap.Store(entity.Key, entity.Value)
+		logger.WithContext(ctx).Infof("apply index: %d, entity:%v", i, entity)
 	}
-	state.SetVolatileState(int64(i-1), int64(i-1))
+	i--
+	//logger.WithContext(ctx).Infof("apply to index: %d, entity:%v", i, entity)
+	atomic.StoreInt64(&state.GetServerState().VolatileState.LastApplied, i)
 }

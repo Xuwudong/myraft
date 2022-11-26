@@ -9,6 +9,7 @@ struct DoCommandReq {
 struct DoCommandResp {
     1: bool succuess
     2: i64 value
+    3: optional string leader
 }
 
 service ClientRaftServer{

@@ -2,12 +2,14 @@ package conf
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/Xuwudong/myraft/logger"
 )
 
 const LogDor string = "logDir"
@@ -24,7 +26,7 @@ type Conf struct {
 func ParseConf() (*Conf, error) {
 	file, err := os.Open("conf/raft.conf")
 	if err != nil {
-		log.Println(err)
+		logger.Error(err)
 	}
 	conf := &Conf{}
 	defer file.Close()
@@ -49,12 +51,12 @@ func ParseConf() (*Conf, error) {
 			innerAddr[int(id)] = addrArr[0] + ":" + addrArr[1]
 			outerAddr[int(id)] = addrArr[0] + ":" + addrArr[2]
 		} else {
-			log.Printf("invalid conf:%s\n", lineText)
+			logger.Errorf("invalid conf:%s\n", lineText)
 		}
 	}
 	conf.InnerAddrMap = innerAddr
 	conf.OuterAddrMap = outerAddr
-	log.Printf("load conf:%+v \n", conf)
+	logger.WithContext(context.Background()).Infof("load conf:%+v", conf)
 	return conf, nil
 
 }
@@ -77,7 +79,7 @@ func UpdateDataField(fileName string, field string, term, candidate int) error {
 		}
 		arr := strings.Split(line, "=")
 		if len(arr) != 2 {
-			log.Printf("invalid conf:%s\n", line)
+			logger.Errorf("invalid conf:%s", line)
 		}
 		if arr[0] == field {
 			if field == Term {
@@ -99,7 +101,6 @@ func UpdateDataField(fileName string, field string, term, candidate int) error {
 		} else if field == VotedFor {
 			line = field + "=" + strconv.Itoa(term) + "_" + strconv.Itoa(candidate)
 		}
-		//log.Printf("line:%s", line)
 		newLines = append(newLines, line)
 	}
 

@@ -11,11 +11,6 @@ type Net struct {
 	ClientAddr string
 }
 
-type PeerServer struct {
-	ServerAddr string
-	//Client     *raft.RaftServerClient
-}
-
 var TransportFactory thrift.TTransportFactory
 var ProtocolFactory thrift.TProtocolFactory
 var Secure bool

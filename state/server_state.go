@@ -1,12 +1,13 @@
 package state
 
 import (
-	"github.com/Xuwudong/myraft/conf"
-	"github.com/Xuwudong/myraft/gen-go/raft"
-	"github.com/Xuwudong/myraft/net"
-	"log"
 	"strconv"
 	"sync"
+
+	"github.com/Xuwudong/myraft/conf"
+	"github.com/Xuwudong/myraft/gen-go/raft"
+	"github.com/Xuwudong/myraft/logger"
+	"github.com/Xuwudong/myraft/net"
 )
 
 var HeartBeatChan = make(chan string)
@@ -15,11 +16,12 @@ var serverState = &ServerState{
 	Role:            raft.Role_Follower,
 	Net:             &net.Net{},
 	PersistentState: &PersistentState{},
-	VolatileState:   &VolatileState{},
-	MasterVolatileState: &MasterVolatileState{
-		NextIndexMap:  make(map[int]int64, 0),
-		MatchIndexMap: make(map[int]int64, 0),
+	VolatileState: &VolatileState{
+		CommitIndex: int64(-1),
+		LastApplied: int64(-1),
 	},
+	MasterVolatileState: &MasterVolatileState{},
+	SlaveVolatileState:  &SlaveVolatileState{},
 }
 
 type ServerState struct {
@@ -29,6 +31,7 @@ type ServerState struct {
 	PersistentState     *PersistentState
 	VolatileState       *VolatileState
 	MasterVolatileState *MasterVolatileState
+	SlaveVolatileState  *SlaveVolatileState
 	Conf                *conf.Conf
 }
 
@@ -53,13 +56,19 @@ type VolatileState struct {
 	LastApplied int64
 	// 选自己的票数
 	VoteNum uint32
+	// peerServers
+	PeerServers []string
 }
 
 type MasterVolatileState struct {
 	// 对于每一台服务器，发送到该服务器的下一个日志条目的索引（初始值为领导人最后的日志条目的索引+1）
-	NextIndexMap map[int]int64
+	NextIndexMap sync.Map
 	// 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引（初始值为0，单调递增）
-	MatchIndexMap map[int]int64
+	MatchIndexMap sync.Map
+}
+
+type SlaveVolatileState struct {
+	LeaderId int64
 }
 
 func GetServerState() *ServerState {
@@ -79,7 +88,7 @@ func GetLastLogMsg() (int64, int64) {
 func ToFollower(term int64) {
 	err := SetTerm(int(term))
 	if err != nil {
-		log.Printf("set Term err:%v", err)
+		logger.Errorf("set Term err:%v", err)
 	}
 	GetServerState().Role = raft.Role_Follower
 }
@@ -91,8 +100,8 @@ func InitMasterVolatileState() {
 	defer masterVolatileStateLock.Unlock()
 	for id, _ := range GetServerState().Conf.InnerAddrMap {
 		if id != GetServerState().ServerId {
-			GetServerState().MasterVolatileState.NextIndexMap[id] = int64(len(GetServerState().PersistentState.Logs))
-			GetServerState().MasterVolatileState.MatchIndexMap[id] = 0
+			GetServerState().MasterVolatileState.NextIndexMap.Store(id, int64(len(GetServerState().PersistentState.Logs)))
+			GetServerState().MasterVolatileState.MatchIndexMap.Store(id, -1)
 		}
 	}
 }
@@ -100,18 +109,18 @@ func InitMasterVolatileState() {
 func SetMasterVolatileState(id int, nextIndex, matchIndex int64) {
 	masterVolatileStateLock.Lock()
 	defer masterVolatileStateLock.Unlock()
-	GetServerState().MasterVolatileState.NextIndexMap[id] = nextIndex
-	GetServerState().MasterVolatileState.MatchIndexMap[id] = matchIndex
+	GetServerState().MasterVolatileState.NextIndexMap.Store(id, nextIndex)
+	GetServerState().MasterVolatileState.MatchIndexMap.Store(id, matchIndex)
 }
 
-var volatileStateLock sync.Mutex
+//var volatileStateLock sync.Mutex
 
-func SetVolatileState(commitIndex, lastApplied int64) {
-	volatileStateLock.Lock()
-	defer volatileStateLock.Unlock()
-	GetServerState().VolatileState.CommitIndex = commitIndex
-	GetServerState().VolatileState.LastApplied = lastApplied
-}
+//func SetVolatileState(commitIndex, lastApplied int64) {
+//	volatileStateLock.Lock()
+//	defer volatileStateLock.Unlock()
+//	GetServerState().VolatileState.CommitIndex = commitIndex
+//	GetServerState().VolatileState.LastApplied = lastApplied
+//}
 
 // GetMaxNum 大多数选票计算方式
 func GetMaxNum() uint32 {

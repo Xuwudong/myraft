@@ -23,13 +23,17 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io"
+	"os"
+	"path"
+	"runtime"
+	"strconv"
+
 	conf2 "github.com/Xuwudong/myraft/conf"
+	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/net"
 	server2 "github.com/Xuwudong/myraft/server"
-	"io"
-	"log"
-	"os"
-	"strconv"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -85,7 +89,7 @@ func main() {
 
 	conf, err := conf2.ParseConf()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	net.Secure = *secure
 	if *server {
@@ -96,19 +100,28 @@ func main() {
 }
 
 func initLog(id int) {
-	f, err := os.OpenFile("log"+strconv.Itoa(id)+".log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+	// 设置日志格式为json格式
+	//logger.WithContext(ctx).SetFormatter(&logger.WithContext(ctx).JSONFormatter{})
+	customFormatter := new(log.TextFormatter)
+	customFormatter.TimestampFormat = "2006-01-02 15:04:05.000000"
+	customFormatter.FullTimestamp = true
+	customFormatter.CallerPrettyfier = func(frame *runtime.Frame) (function string, file string) {
+		fileName := path.Base(frame.File) + ":" + strconv.Itoa(frame.Line)
+		//return frame.Function, fileName
+		return "", fileName
+	}
+	log.SetFormatter(customFormatter)
+
+	// 设置日志级别为warn以上
+	//logger.WithContext(ctx).SetLevel(logger.WithContext(ctx).WarnLevel)
+
+	f, err := os.OpenFile("run_log"+strconv.Itoa(id)+".log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
 	if err != nil {
 		return
 	}
-	//defer func() {
-	//	f.Close()
-	//}()
-
-	// 组合一下即可，os.Stdout代表标准输出流
 	multiWriter := io.MultiWriter(os.Stdout, f)
 	log.SetOutput(multiWriter)
-
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.SetReportCaller(true)
 
 	log.Printf("start server:%d \n", id)
 }

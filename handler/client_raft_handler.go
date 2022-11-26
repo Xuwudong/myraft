@@ -2,12 +2,13 @@ package handler
 
 import (
 	"context"
+
 	"github.com/Xuwudong/myraft/gen-go/raft"
 	log2 "github.com/Xuwudong/myraft/log"
+	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/machine"
 	"github.com/Xuwudong/myraft/service"
 	"github.com/Xuwudong/myraft/state"
-	"log"
 )
 
 type ClientRaftHandler struct {
@@ -20,14 +21,15 @@ func NewClientRaftHandler() *ClientRaftHandler {
 func (p *ClientRaftHandler) DoCommand(ctx context.Context, req *raft.DoCommandReq) (*raft.DoCommandResp, error) {
 	resp := &raft.DoCommandResp{}
 	defer func() {
-		log.Printf("DoCommand req:%v\n", req)
-		log.Printf("DoCommand resp:%v\n", resp)
+		logger.WithContext(ctx).Infof("DoCommand req:%v, resp:%v", req, resp)
 	}()
 	if req.Command == nil {
 		return resp, nil
 	}
 	if req.Command.Opt == raft.Opt_Write {
 		if state.GetServerState().Role != raft.Role_Leader {
+			leader := state.GetServerState().Conf.OuterAddrMap[int(state.GetServerState().SlaveVolatileState.LeaderId)]
+			resp.Leader = &leader
 			return resp, nil
 		}
 		// todo ID去重
@@ -36,9 +38,9 @@ func (p *ClientRaftHandler) DoCommand(ctx context.Context, req *raft.DoCommandRe
 			Command: req.Command,
 		}
 		resp = &raft.DoCommandResp{}
-		_, _, err := log2.AppendLog([]*raft.LogEntry{logEntry})
+		_, _, err := log2.AppendLog(ctx, []*raft.LogEntry{logEntry})
 		if err != nil {
-			log.Println(err)
+			logger.WithContext(ctx).Println(err)
 			return resp, nil
 		}
 		// send logEntry
@@ -49,13 +51,13 @@ func (p *ClientRaftHandler) DoCommand(ctx context.Context, req *raft.DoCommandRe
 		}
 		err = service.AppendLogEntries(ctx, req)
 		if err != nil {
-			log.Printf("AppendLogEntries error:%v\n\n", err)
+			logger.WithContext(ctx).Errorf("AppendLogEntries error:%v\n\n", err)
 			return resp, nil
 		}
 		// reply to status machine
-		err = machine.Apply()
+		err = machine.Apply(ctx)
 		if err != nil {
-			log.Printf("machine apply error:%v\n\n", err)
+			logger.WithContext(ctx).Errorf("machine apply error:%v\n\n", err)
 			return resp, err
 		}
 		resp.Succuess = true
@@ -66,13 +68,17 @@ func (p *ClientRaftHandler) DoCommand(ctx context.Context, req *raft.DoCommandRe
 			return resp, nil
 		}
 		if state.GetServerState().Role == raft.Role_Follower {
-			err := machine.Apply()
+			err := machine.Apply(ctx)
 			if err != nil {
 				return resp, err
 			}
 		}
-		value, _ := machine.GetStateMachine().KVMap[req.Command.Entity.Key]
-		resp.Value = value
+		value, _ := machine.GetStateMachine().KVMap.Load(req.Command.Entity.Key)
+		v, _ := value.(int64)
+		if v == 0 {
+			logger.WithContext(ctx).Errorf("read error no value, key:%s", req.Command.Entity.Key)
+		}
+		resp.Value = v
 		resp.Succuess = true
 	}
 	return resp, nil

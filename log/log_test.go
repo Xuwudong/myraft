@@ -2,8 +2,9 @@ package log
 
 import (
 	"fmt"
-	"github.com/Xuwudong/myraft/gen-go/raft"
 	"testing"
+
+	"github.com/Xuwudong/myraft/gen-go/raft"
 
 	"github.com/stretchr/testify/assert"
 )
