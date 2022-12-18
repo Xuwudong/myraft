@@ -23,7 +23,7 @@ func TestCommand(t *testing.T) {
 	wReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Write,
-			Entity: &raft.Entity{
+			Entry: &raft.Entry{
 				Key:   strconv.Itoa(int(ran)),
 				Value: ran,
 			},
@@ -53,7 +53,7 @@ func TestCommand(t *testing.T) {
 	rReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Read,
-			Entity: &raft.Entity{
+			Entry: &raft.Entry{
 				Key: strconv.Itoa(int(ran)),
 			},
 		},
@@ -86,7 +86,7 @@ func TestRead(t *testing.T) {
 	rReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Read,
-			Entity: &raft.Entity{
+			Entry: &raft.Entry{
 				Key: "9765",
 			},
 		},
