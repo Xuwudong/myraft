@@ -63,9 +63,13 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 		// 心跳记得 ch <- "done",保证不超时
 		state.HeartBeatChan <- "receive heartbeat"
 		state.GetServerState().SlaveVolatileState.LeaderId = req.LeaderId
-		if state.GetServerState().VolatileState.CommitIndex < req.LeaderCommit {
-			atomic.StoreInt64(&state.GetServerState().VolatileState.CommitIndex, req.LeaderCommit)
-		}
+		//if state.GetServerState().VolatileState.CommitIndex < req.LeaderCommit {
+		//	commitIndex := req.LeaderCommit
+		//	if commitIndex >= int64(len(state.GetServerState().PersistentState.Logs)) {
+		//		commitIndex = int64(len(state.GetServerState().PersistentState.Logs) - 1)
+		//	}
+		//	atomic.StoreInt64(&state.GetServerState().VolatileState.CommitIndex, commitIndex)
+		//}
 		resp.Succuess = true
 	} else {
 		appendMutex.Lock()
