@@ -21,6 +21,7 @@ package handler
 
 import (
 	"context"
+	"github.com/Xuwudong/myraft/conf"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -115,10 +116,9 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 				if j > 0 && j < int64(len(state.GetServerState().PersistentState.Logs)) {
 					myLog := state.GetServerState().PersistentState.Logs[j]
 					if myLog.Term == entry.Term &&
-						myLog.Command != nil && myLog.Command.Entity != nil &&
-						entry.Command != nil && entry.Command.Entity != nil &&
-						myLog.Command.Entity.Key == entry.Command.Entity.Key &&
-						myLog.Command.Entity.Value == myLog.Command.Entity.Value {
+						myLog.Entry != nil && entry.Entry != nil &&
+						myLog.Entry.Key == entry.Entry.Key &&
+						myLog.Entry.Value == myLog.Entry.Value {
 						// 去重
 						logger.WithContext(ctx).Infof("reduplicate log entry:%v", entry)
 						j++
@@ -128,6 +128,13 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 					newEntries = append(newEntries, entry)
 					j++
 				}
+			}
+		}
+		for _, logEntry := range newEntries {
+			if logEntry.Entry.EntryType == raft.EntryType_MemberChange {
+				state.ToCOldNewState(logEntry.Entry)
+			} else if logEntry.Entry.EntryType == raft.EntryType_MemberChangeNew {
+				state.ToCOldState()
 			}
 		}
 		_, _, err := log2.AppendLog(ctx, newEntries)
@@ -175,7 +182,12 @@ func (p *RaftHandler) RequestVote(ctx context.Context, req *raft.RequestVoteReq)
 		if req.LastLogTerm > lastLogTerm || (req.LastLogTerm == lastLogTerm && req.LastLogIndex >= lastLogIndex) {
 			resp.VoteGranted = true
 			// 一旦同意了别人，对自己的选票置零
-			atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
+			if state.GetServerState().MemberConf.State == conf.COld {
+				atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
+			} else if state.GetServerState().MemberConf.State == conf.COldNew {
+				atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
+				atomic.StoreUint32(&state.GetServerState().VolatileState.NewVoteNum, 0)
+			}
 			err := state.SetVotedFor(int(req.Term), int(req.CandidateId))
 			if err != nil {
 				logger.WithContext(ctx).Errorf("SetVotedFor error:%v", err)

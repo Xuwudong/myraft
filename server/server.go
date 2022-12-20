@@ -34,7 +34,6 @@ import (
 	log2 "github.com/Xuwudong/myraft/log"
 	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/middleware"
-	"github.com/Xuwudong/myraft/pool"
 	"github.com/Xuwudong/myraft/state"
 	"github.com/Xuwudong/myraft/util"
 	"github.com/apache/thrift/lib/go/thrift"
@@ -44,33 +43,18 @@ var raftHandler = handler.NewRaftHandler()
 var clientRaftHandler = handler.NewClientRaftHandler()
 
 func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, secure bool,
-	id int, curConf *conf.Conf, cfg *thrift.TConfiguration) error {
+	id int, curConf *conf.Conf, serverPort, clientPort int64) error {
 	var transport thrift.TServerTransport
 	var clientTransport thrift.TServerTransport
 	state.GetServerState().ServerId = id
 	state.GetServerState().Conf = curConf
-	serverAddr, ok := curConf.InnerAddrMap[(id)]
-	if !ok {
-		logger.Fatalf("invalid id:%d", id)
-	}
-	state.GetServerState().Net.ServerAddr = serverAddr
-	clientAddr, ok := curConf.OuterAddrMap[id]
-	if !ok {
-		logger.Fatalf("invalid id:%d", id)
-	}
-	state.GetServerState().Net.ClientAddr = clientAddr
+	state.GetServerState().Net.ServerAddr = "localhost:" + strconv.FormatInt(serverPort, 10)
+	state.GetServerState().Net.ClientAddr = "localhost:" + strconv.FormatInt(clientPort, 10)
 
 	err := initPersistenceStatus(curConf, state.GetServerState().ServerId)
 	if err != nil {
 		logger.Fatalf("initPersistenceStatus err:%v", err)
 	}
-	peerServers := make([]string, 0)
-	for _, addr := range curConf.InnerAddrMap {
-		if addr != state.GetServerState().Net.ServerAddr {
-			peerServers = append(peerServers, addr)
-		}
-	}
-	state.GetServerState().VolatileState.PeerServers = peerServers
 	//go func() {
 	//	registerPeerServer(transportFactory, protocolFactory, secure, cfg)
 	//}()
@@ -84,11 +68,11 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 		} else {
 			return err
 		}
-		transport, err = thrift.NewTSSLServerSocket(serverAddr, cfg)
-		clientTransport, err = thrift.NewTSSLServerSocket(clientAddr, cfg)
+		transport, err = thrift.NewTSSLServerSocket(state.GetServerState().Net.ServerAddr, cfg)
+		clientTransport, err = thrift.NewTSSLServerSocket(state.GetServerState().Net.ClientAddr, cfg)
 	} else {
-		transport, err = thrift.NewTServerSocket(serverAddr)
-		clientTransport, err = thrift.NewTServerSocket(clientAddr)
+		transport, err = thrift.NewTServerSocket(state.GetServerState().Net.ServerAddr)
+		clientTransport, err = thrift.NewTServerSocket(state.GetServerState().Net.ClientAddr)
 	}
 
 	if err != nil {
@@ -103,21 +87,24 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 	cwrapper := thrift.WrapProcessor(clientProcessor, middleware.TrackIdProcessorMiddleware())
 	clientServer := thrift.NewTSimpleServer4(cwrapper, clientTransport, transportFactory, protocolFactory)
 
-	pool.Init(state.GetServerState().VolatileState.PeerServers)
+	//pool.Init(state.GetServerState().VolatileState.PeerServers)
 	go func() {
 		Run()
+	}()
+	go func() {
+		ToNewServerAddrMapLoop()
 	}()
 	go func() {
 		heartbeat.Run()
 	}()
 	go func() {
-		logger.Infof("Starting myraft clientServer... on ", clientAddr)
+		logger.Infof("Starting myraft clientServer... on ", state.GetServerState().Net.ClientAddr)
 		err := clientServer.Serve()
 		if err != nil {
 			logger.Fatalf("client server err:%v", err)
 		}
 	}()
-	logger.Infof("Starting myraft server... on ", serverAddr)
+	logger.Infof("Starting myraft server... on ", state.GetServerState().Net.ServerAddr)
 	return server.Serve()
 }
 

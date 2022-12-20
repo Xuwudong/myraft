@@ -1,15 +1,15 @@
-package client
+package test
 
 import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/Xuwudong/myraft/gen-go/raft"
 	"math/rand"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/pool"
 

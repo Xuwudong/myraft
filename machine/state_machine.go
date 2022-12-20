@@ -42,9 +42,9 @@ func Init(ctx context.Context) error {
 }
 
 func ApplyFromIndex(ctx context.Context, i int64) {
-	var entity *raft.Entity
+	var entity *raft.Entry
 	for ; i <= state.GetServerState().VolatileState.CommitIndex && i < int64(len(state.GetServerState().PersistentState.Logs)); i++ {
-		entity = state.GetServerState().PersistentState.Logs[i].Command.Entity
+		entity = state.GetServerState().PersistentState.Logs[i].Entry
 		stateMachine.KVMap.Store(entity.Key, entity.Value)
 		logger.WithContext(ctx).Infof("apply index: %d, entity:%v", i, entity)
 	}

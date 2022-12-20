@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"github.com/Xuwudong/myraft/conf"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,69 +14,15 @@ import (
 	"github.com/Xuwudong/myraft/state"
 )
 
-func AppendLogEntries(ctx context.Context, req *raft.AppendEntriesReq) error {
-	var ch = make(chan int)
-	var needCount = uint32(0)
-	var once sync.Once
-	for id, addr := range state.GetServerState().Conf.InnerAddrMap {
-		if addr != state.GetServerState().Net.ServerAddr {
-			tempAddr := addr
-			tempReq := req
-			tempId := id
-			go func(id int, req *raft.AppendEntriesReq) {
-				defer func() {
-					atomic.AddUint32(&needCount, 1)
-					if needCount >= state.GetMaxNum()-1 {
-						once.Do(func() {
-							ch <- 1
-						})
-					}
-				}()
-				value, ok := state.GetServerState().MasterVolatileState.NextIndexMap.Load(id)
-				if !ok {
-					state.SetMasterVolatileState(id, int64(len(state.GetServerState().PersistentState.Logs)), 0)
-					value, _ = state.GetServerState().MasterVolatileState.NextIndexMap.Load(id)
-				}
-				nextIndex, _ := value.(int64)
-				for {
-					startIndex := nextIndex
-					if startIndex < 0 {
-						startIndex = 0
-					}
-					if startIndex >= int64(len(state.GetServerState().PersistentState.Logs)) {
-						startIndex = int64(len(state.GetServerState().PersistentState.Logs)) - 1
-					}
-					req.Entries = state.GetServerState().PersistentState.Logs[startIndex:len(state.GetServerState().PersistentState.Logs)]
-					req.PreLogIndex = nextIndex - 1
-					if req.PreLogIndex >= 0 {
-						req.PreLogTerm = state.GetServerState().PersistentState.Logs[req.PreLogIndex].Term
-					}
-					resp, err := rpc.AppendEntriesByServer(ctx, id, tempAddr, req, true)
-					if err != nil {
-						// 超时等错误，重试
-						logger.WithContext(ctx).Errorf("Append Entries err:%v\n", err)
-						time.Sleep(100 * time.Millisecond)
-						continue
-					}
-					if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
-						state.ToFollower(resp.Term)
-					}
-					if resp.Succuess {
-						nextIndex = int64(len(state.GetServerState().PersistentState.Logs))
-						matchIndex := nextIndex - 1
-						state.SetMasterVolatileState(id, nextIndex, matchIndex)
-						break
-					} else {
-						// 没有匹配到,重试
-						nextIndex--
-						logger.WithContext(ctx).Warnf("递减重试，nextIndex:%d\n", nextIndex)
-						time.Sleep(10 * time.Millisecond)
-					}
-				}
-			}(tempId, tempReq)
-		}
+func AppendLogEntriesToMost(ctx context.Context, req *raft.AppendEntriesReq) error {
+	if state.GetServerState().MemberConf.State == conf.COld {
+		AppendToMostServers(ctx, state.GetServerState().VolatileState.PeerServers, req)
+	} else if state.GetServerState().MemberConf.State == conf.COldNew {
+		AppendToMostServers(ctx, state.GetServerState().VolatileState.PeerServers, req)
+		AppendToMostServers(ctx, state.GetServerState().VolatileState.NewPeerServers, req)
+	} else {
+		return fmt.Errorf("memberconf state error")
 	}
-	<-ch
 	// 大多数复制成功
 	logger.WithContext(ctx).Println("the logs has been copied by most of server")
 	// update master commitIndex
@@ -87,4 +35,70 @@ func AppendLogEntries(ctx context.Context, req *raft.AppendEntriesReq) error {
 		}
 	}
 	return nil
+}
+
+func AppendToMostServers(ctx context.Context, peerServers []string, req *raft.AppendEntriesReq) {
+	if len(peerServers) == 0 {
+		return
+	}
+	var ch = make(chan int)
+	var needCount = uint32(0)
+	var once sync.Once
+	for id, addr := range peerServers {
+		tempAddr := addr
+		tempReq := req
+		tempId := id
+		go func(id int, req *raft.AppendEntriesReq) {
+			defer func() {
+				atomic.AddUint32(&needCount, 1)
+				if needCount+1 >= state.GetMaxNum(len(peerServers)) {
+					once.Do(func() {
+						ch <- 1
+					})
+				}
+			}()
+			value, ok := state.GetServerState().MasterVolatileState.NextIndexMap.Load(id)
+			if !ok {
+				state.SetMasterVolatileState(id, int64(len(state.GetServerState().PersistentState.Logs)), 0)
+				value, _ = state.GetServerState().MasterVolatileState.NextIndexMap.Load(id)
+			}
+			nextIndex, _ := value.(int64)
+			for {
+				startIndex := nextIndex
+				if startIndex < 0 {
+					startIndex = 0
+				}
+				if startIndex >= int64(len(state.GetServerState().PersistentState.Logs)) {
+					startIndex = int64(len(state.GetServerState().PersistentState.Logs)) - 1
+				}
+				req.Entries = state.GetServerState().PersistentState.Logs[startIndex:len(state.GetServerState().PersistentState.Logs)]
+				req.PreLogIndex = nextIndex - 1
+				if req.PreLogIndex >= 0 {
+					req.PreLogTerm = state.GetServerState().PersistentState.Logs[req.PreLogIndex].Term
+				}
+				resp, err := rpc.AppendEntriesByServer(ctx, id, tempAddr, req, true)
+				if err != nil {
+					// 超时等错误，重试
+					logger.WithContext(ctx).Errorf("Append Entries err:%v\n", err)
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+				if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
+					state.ToFollower(resp.Term)
+				}
+				if resp.Succuess {
+					nextIndex = int64(len(state.GetServerState().PersistentState.Logs))
+					matchIndex := nextIndex - 1
+					state.SetMasterVolatileState(id, nextIndex, matchIndex)
+					break
+				} else {
+					// 没有匹配到,重试
+					nextIndex--
+					logger.WithContext(ctx).Warnf("递减重试，nextIndex:%d\n", nextIndex)
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
+		}(tempId, tempReq)
+	}
+	<-ch
 }

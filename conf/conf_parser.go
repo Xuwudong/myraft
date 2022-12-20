@@ -13,14 +13,11 @@ import (
 )
 
 const LogDor string = "logDir"
-const Server string = "server"
 const Term string = "term"
 const VotedFor string = "votedFor"
 
 type Conf struct {
-	LogDir       string
-	InnerAddrMap map[int]string
-	OuterAddrMap map[int]string
+	LogDir string
 }
 
 func ParseConf() (*Conf, error) {
@@ -30,8 +27,6 @@ func ParseConf() (*Conf, error) {
 	}
 	conf := &Conf{}
 	defer file.Close()
-	innerAddr := make(map[int]string, 0)
-	outerAddr := make(map[int]string, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		lineText := scanner.Text()
@@ -42,20 +37,10 @@ func ParseConf() (*Conf, error) {
 		key := strings.Trim(arr[0], " ")
 		if LogDor == key {
 			conf.LogDir = strings.Trim(arr[1], " ")
-		} else if strings.Index(key, Server) >= 0 {
-			value := strings.Trim(arr[1], " ")
-			addrArr := strings.Split(value, ":")
-			idStr := strings.Replace(key, Server+".", "", -1)
-			id, _ := strconv.ParseInt(idStr, 10, 64)
-
-			innerAddr[int(id)] = addrArr[0] + ":" + addrArr[1]
-			outerAddr[int(id)] = addrArr[0] + ":" + addrArr[2]
 		} else {
 			logger.Errorf("invalid conf:%s\n", lineText)
 		}
 	}
-	conf.InnerAddrMap = innerAddr
-	conf.OuterAddrMap = outerAddr
 	logger.WithContext(context.Background()).Infof("load conf:%+v", conf)
 	return conf, nil
 

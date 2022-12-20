@@ -20,22 +20,16 @@ package main
  */
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"io"
-	"os"
-	"path"
-	"runtime"
-	"strconv"
-
-	conf2 "github.com/Xuwudong/myraft/conf"
+	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/logger"
-	"github.com/Xuwudong/myraft/net"
-	server2 "github.com/Xuwudong/myraft/server"
-	log "github.com/sirupsen/logrus"
-
+	"github.com/Xuwudong/myraft/pool"
 	"github.com/apache/thrift/lib/go/thrift"
+	log "github.com/sirupsen/logrus"
+	"os"
 )
 
 func Usage() {
@@ -46,84 +40,41 @@ func Usage() {
 
 func main() {
 	flag.Usage = Usage
-	server := flag.Bool("server", true, "Run server")
-	protocol := flag.String("P", "binary", "Specify the protocol (binary, compact, json, simplejson)")
-	framed := flag.Bool("framed", false, "Use framed transport")
-	buffered := flag.Bool("buffered", false, "Use buffered transport")
-	secure := flag.Bool("secure", false, "Use tls secure transport")
-	id := flag.Int("id", 1, "server_id")
-	serverPort := flag.Int64("serverPort", 8080, "server_port")
-	clientPort := flag.Int64("clientPort", 9090, "client_port")
+	id := flag.Int64("id", 1, "server_id")
+	serverAddr := flag.String("server_addr", "localhost:8080", "server_port")
+	clientAddr := flag.String("client_addr", "localhost:9090", "client_port")
 
-	flag.Parse()
-
-	initLog(*id)
-
-	switch *protocol {
-	case "compact":
-		net.ProtocolFactory = thrift.NewTCompactProtocolFactoryConf(nil)
-	case "simplejson":
-		net.ProtocolFactory = thrift.NewTSimpleJSONProtocolFactoryConf(nil)
-	case "json":
-		net.ProtocolFactory = thrift.NewTJSONProtocolFactory()
-	case "binary", "":
-		net.ProtocolFactory = thrift.NewTBinaryProtocolFactoryConf(nil)
-	default:
-		fmt.Fprint(os.Stderr, "Invalid protocol specified", protocol, "\n")
-		Usage()
-		os.Exit(1)
-	}
-
-	net.Cfg = &thrift.TConfiguration{
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true,
+	wReq := &raft.DoCommandReq{
+		Command: &raft.Command{
+			Opt: raft.Opt_Write,
+			Entry: &raft.Entry{
+				EntryType: raft.EntryType_MemberChange,
+				AddMembers: []*raft.Member{
+					{
+						MemberID:   *id,
+						ServerAddr: *serverAddr,
+						ClientAddr: *clientAddr,
+					},
+				},
+			},
 		},
 	}
-	if *buffered {
-		net.TransportFactory = thrift.NewTBufferedTransportFactory(8192)
-	} else {
-		net.TransportFactory = thrift.NewTTransportFactory()
-	}
-
-	if *framed {
-		net.TransportFactory = thrift.NewTFramedTransportFactoryConf(net.TransportFactory, net.Cfg)
-	}
-
-	conf, err := conf2.ParseConf()
-	if err != nil {
-		logger.Fatal(err)
-	}
-	net.Secure = *secure
-	if *server {
-		if err := server2.RunServer(net.TransportFactory, net.ProtocolFactory, *secure, *id, conf, *serverPort, *clientPort); err != nil {
-			fmt.Println("error running server:", err)
+	var client *raft.ClientRaftServerClient
+	var err error
+	var tr thrift.TTransport
+	for {
+		client, tr, err = pool.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
+			"localhost:9090", false, &thrift.TConfiguration{
+				TLSConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			})
+		if err == nil {
+			break
 		}
+		logger.Printf("error new client: %v", err)
 	}
-}
-
-func initLog(id int) {
-	// 设置日志格式为json格式
-	//logger.WithContext(ctx).SetFormatter(&logger.WithContext(ctx).JSONFormatter{})
-	customFormatter := new(log.TextFormatter)
-	customFormatter.TimestampFormat = "2006-01-02 15:04:05.000000"
-	customFormatter.FullTimestamp = true
-	customFormatter.CallerPrettyfier = func(frame *runtime.Frame) (function string, file string) {
-		fileName := path.Base(frame.File) + ":" + strconv.Itoa(frame.Line)
-		//return frame.Function, fileName
-		return "", fileName
-	}
-	log.SetFormatter(customFormatter)
-
-	// 设置日志级别为warn以上
-	//logger.WithContext(ctx).SetLevel(logger.WithContext(ctx).WarnLevel)
-
-	f, err := os.OpenFile("run_log"+strconv.Itoa(id)+".log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-	if err != nil {
-		return
-	}
-	multiWriter := io.MultiWriter(os.Stdout, f)
-	log.SetOutput(multiWriter)
-	log.SetReportCaller(true)
-
-	log.Printf("start server:%d \n", id)
+	defer tr.Close()
+	resp, err := client.DoCommand(context.Background(), wReq)
+	log.Print(resp)
 }
