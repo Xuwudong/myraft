@@ -480,14 +480,12 @@ func (p *Command) String() string {
 //  - Key
 //  - Value
 //  - EntryType
-//  - AddMembers
-//  - SubMembers
+//  - Members
 type Entry struct {
   Key string `thrift:"key,1" db:"key" json:"key"`
   Value int64 `thrift:"value,2" db:"value" json:"value"`
   EntryType EntryType `thrift:"entry_type,3" db:"entry_type" json:"entry_type"`
-  AddMembers []*Member `thrift:"addMembers,4" db:"addMembers" json:"addMembers"`
-  SubMembers []*Member `thrift:"subMembers,5" db:"subMembers" json:"subMembers"`
+  Members []*Member `thrift:"members,4" db:"members" json:"members"`
 }
 
 func NewEntry() *Entry {
@@ -507,12 +505,8 @@ func (p *Entry) GetEntryType() EntryType {
   return p.EntryType
 }
 
-func (p *Entry) GetAddMembers() []*Member {
-  return p.AddMembers
-}
-
-func (p *Entry) GetSubMembers() []*Member {
-  return p.SubMembers
+func (p *Entry) GetMembers() []*Member {
+  return p.Members
 }
 func (p *Entry) Read(ctx context.Context, iprot thrift.TProtocol) error {
   if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -560,16 +554,6 @@ func (p *Entry) Read(ctx context.Context, iprot thrift.TProtocol) error {
     case 4:
       if fieldTypeId == thrift.LIST {
         if err := p.ReadField4(ctx, iprot); err != nil {
-          return err
-        }
-      } else {
-        if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-          return err
-        }
-      }
-    case 5:
-      if fieldTypeId == thrift.LIST {
-        if err := p.ReadField5(ctx, iprot); err != nil {
           return err
         }
       } else {
@@ -626,33 +610,13 @@ func (p *Entry)  ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
     return thrift.PrependError("error reading list begin: ", err)
   }
   tSlice := make([]*Member, 0, size)
-  p.AddMembers =  tSlice
+  p.Members =  tSlice
   for i := 0; i < size; i ++ {
     _elem0 := &Member{}
     if err := _elem0.Read(ctx, iprot); err != nil {
       return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem0), err)
     }
-    p.AddMembers = append(p.AddMembers, _elem0)
-  }
-  if err := iprot.ReadListEnd(ctx); err != nil {
-    return thrift.PrependError("error reading list end: ", err)
-  }
-  return nil
-}
-
-func (p *Entry)  ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
-  _, size, err := iprot.ReadListBegin(ctx)
-  if err != nil {
-    return thrift.PrependError("error reading list begin: ", err)
-  }
-  tSlice := make([]*Member, 0, size)
-  p.SubMembers =  tSlice
-  for i := 0; i < size; i ++ {
-    _elem1 := &Member{}
-    if err := _elem1.Read(ctx, iprot); err != nil {
-      return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem1), err)
-    }
-    p.SubMembers = append(p.SubMembers, _elem1)
+    p.Members = append(p.Members, _elem0)
   }
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
@@ -668,7 +632,6 @@ func (p *Entry) Write(ctx context.Context, oprot thrift.TProtocol) error {
     if err := p.writeField2(ctx, oprot); err != nil { return err }
     if err := p.writeField3(ctx, oprot); err != nil { return err }
     if err := p.writeField4(ctx, oprot); err != nil { return err }
-    if err := p.writeField5(ctx, oprot); err != nil { return err }
   }
   if err := oprot.WriteFieldStop(ctx); err != nil {
     return thrift.PrependError("write field stop error: ", err) }
@@ -708,12 +671,12 @@ func (p *Entry) writeField3(ctx context.Context, oprot thrift.TProtocol) (err er
 }
 
 func (p *Entry) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "addMembers", thrift.LIST, 4); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:addMembers: ", p), err) }
-  if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.AddMembers)); err != nil {
+  if err := oprot.WriteFieldBegin(ctx, "members", thrift.LIST, 4); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:members: ", p), err) }
+  if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.Members)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
   }
-  for _, v := range p.AddMembers {
+  for _, v := range p.Members {
     if err := v.Write(ctx, oprot); err != nil {
       return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
     }
@@ -722,26 +685,7 @@ func (p *Entry) writeField4(ctx context.Context, oprot thrift.TProtocol) (err er
     return thrift.PrependError("error writing list end: ", err)
   }
   if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 4:addMembers: ", p), err) }
-  return err
-}
-
-func (p *Entry) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "subMembers", thrift.LIST, 5); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:subMembers: ", p), err) }
-  if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.SubMembers)); err != nil {
-    return thrift.PrependError("error writing list begin: ", err)
-  }
-  for _, v := range p.SubMembers {
-    if err := v.Write(ctx, oprot); err != nil {
-      return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
-    }
-  }
-  if err := oprot.WriteListEnd(ctx); err != nil {
-    return thrift.PrependError("error writing list end: ", err)
-  }
-  if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 5:subMembers: ", p), err) }
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 4:members: ", p), err) }
   return err
 }
 
@@ -754,15 +698,10 @@ func (p *Entry) Equals(other *Entry) bool {
   if p.Key != other.Key { return false }
   if p.Value != other.Value { return false }
   if p.EntryType != other.EntryType { return false }
-  if len(p.AddMembers) != len(other.AddMembers) { return false }
-  for i, _tgt := range p.AddMembers {
-    _src2 := other.AddMembers[i]
-    if !_tgt.Equals(_src2) { return false }
-  }
-  if len(p.SubMembers) != len(other.SubMembers) { return false }
-  for i, _tgt := range p.SubMembers {
-    _src3 := other.SubMembers[i]
-    if !_tgt.Equals(_src3) { return false }
+  if len(p.Members) != len(other.Members) { return false }
+  for i, _tgt := range p.Members {
+    _src1 := other.Members[i]
+    if !_tgt.Equals(_src1) { return false }
   }
   return true
 }
