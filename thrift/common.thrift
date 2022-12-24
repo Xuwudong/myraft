@@ -11,17 +11,31 @@ enum Opt{
     Write = 2
 }
 
+enum EntryType {
+    KV = 1
+    MemberChange = 2
+    MemberChangeNew = 3
+}
+
 struct LogEntry {
     1: i64  term
-    2: Command command
+    2: Entry entry
 }
 
 struct Command {
-    1: Entity entity
+    1: Entry entry
     3: Opt opt
 }
 
-struct Entity {
+struct Entry {
     1: string key
     2: i64 value
+    3: EntryType entry_type
+    4: list<Member> members
+}
+
+struct Member {
+    1: i64 member_id
+    2: string server_addr // 内部通信地址
+    3: string client_addr // 外部通信地址
 }

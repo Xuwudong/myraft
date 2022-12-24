@@ -1,15 +1,15 @@
-package client
+package test
 
 import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/Xuwudong/myraft/gen-go/raft"
 	"math/rand"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/pool"
 
@@ -19,13 +19,14 @@ import (
 
 func TestCommand(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	ran := rand.Int63n(10000)
+	ran := rand.Int63n(10000000)
 	wReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Write,
-			Entity: &raft.Entity{
-				Key:   strconv.Itoa(int(ran)),
-				Value: ran,
+			Entry: &raft.Entry{
+				Key:       strconv.Itoa(int(ran)),
+				Value:     ran,
+				EntryType: raft.EntryType_KV,
 			},
 		},
 	}
@@ -53,8 +54,9 @@ func TestCommand(t *testing.T) {
 	rReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Read,
-			Entity: &raft.Entity{
-				Key: strconv.Itoa(int(ran)),
+			Entry: &raft.Entry{
+				Key:       strconv.Itoa(int(ran)),
+				EntryType: raft.EntryType_KV,
 			},
 		},
 	}
@@ -86,7 +88,7 @@ func TestRead(t *testing.T) {
 	rReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Read,
-			Entity: &raft.Entity{
+			Entry: &raft.Entry{
 				Key: "9765",
 			},
 		},

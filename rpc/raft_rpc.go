@@ -44,9 +44,9 @@ func AppendEntriesByServer(ctx context.Context, serverId int, addr string, req *
 	//logger.WithContext(ctx).Infof("append log req:%v,id:%d", req, serverId)
 	resp, err := AppendEntries(client.Client, ctx, req)
 	defer func(client *pool.Client) {
-		err := pool.Return(client)
+		err := pool.Recycle(client)
 		if err != nil {
-			logger.WithContext(ctx).Errorf("Return error:%v", err)
+			logger.WithContext(ctx).Errorf("Recycle error:%v", err)
 		}
 	}(client)
 	if err != nil {

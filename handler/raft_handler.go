@@ -21,6 +21,7 @@ package handler
 
 import (
 	"context"
+	"github.com/Xuwudong/myraft/conf"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -62,10 +63,16 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 	if len(req.Entries) == 0 {
 		// 心跳记得 ch <- "done",保证不超时
 		state.HeartBeatChan <- "receive heartbeat"
-		state.GetServerState().SlaveVolatileState.LeaderId = req.LeaderId
-		if state.GetServerState().VolatileState.CommitIndex < req.LeaderCommit {
-			atomic.StoreInt64(&state.GetServerState().VolatileState.CommitIndex, req.LeaderCommit)
+		if state.GetServerState().SlaveVolatileState.LeaderId != req.LeaderId {
+			state.GetServerState().SlaveVolatileState.LeaderId = req.LeaderId
 		}
+		//if state.GetServerState().VolatileState.CommitIndex < req.LeaderCommit {
+		//	commitIndex := req.LeaderCommit
+		//	if commitIndex >= int64(len(state.GetServerState().PersistentState.Logs)) {
+		//		commitIndex = int64(len(state.GetServerState().PersistentState.Logs) - 1)
+		//	}
+		//	atomic.StoreInt64(&state.GetServerState().VolatileState.CommitIndex, commitIndex)
+		//}
 		resp.Succuess = true
 	} else {
 		appendMutex.Lock()
@@ -108,13 +115,13 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 		if !deleted {
 			newEntries = make([]*raft.LogEntry, 0)
 			for _, entry := range req.Entries {
-				if j > 0 && j < int64(len(state.GetServerState().PersistentState.Logs)) {
+				if j >= 0 && j < int64(len(state.GetServerState().PersistentState.Logs)) {
 					myLog := state.GetServerState().PersistentState.Logs[j]
 					if myLog.Term == entry.Term &&
-						myLog.Command != nil && myLog.Command.Entity != nil &&
-						entry.Command != nil && entry.Command.Entity != nil &&
-						myLog.Command.Entity.Key == entry.Command.Entity.Key &&
-						myLog.Command.Entity.Value == myLog.Command.Entity.Value {
+						myLog.Entry != nil && entry.Entry != nil &&
+						myLog.Entry.Key == entry.Entry.Key &&
+						myLog.Entry.Value == myLog.Entry.Value &&
+						myLog.Entry.EntryType == myLog.Entry.EntryType {
 						// 去重
 						logger.WithContext(ctx).Infof("reduplicate log entry:%v", entry)
 						j++
@@ -124,6 +131,13 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 					newEntries = append(newEntries, entry)
 					j++
 				}
+			}
+		}
+		for _, logEntry := range newEntries {
+			if logEntry.Entry.EntryType == raft.EntryType_MemberChange {
+				state.ToCOldNewState(ctx, logEntry.Entry)
+			} else if logEntry.Entry.EntryType == raft.EntryType_MemberChangeNew {
+				state.ToCOldState(ctx)
 			}
 		}
 		_, _, err := log2.AppendLog(ctx, newEntries)
@@ -171,7 +185,12 @@ func (p *RaftHandler) RequestVote(ctx context.Context, req *raft.RequestVoteReq)
 		if req.LastLogTerm > lastLogTerm || (req.LastLogTerm == lastLogTerm && req.LastLogIndex >= lastLogIndex) {
 			resp.VoteGranted = true
 			// 一旦同意了别人，对自己的选票置零
-			atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
+			if state.GetServerState().MemberConf.State == conf.COld {
+				atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
+			} else if state.GetServerState().MemberConf.State == conf.COldNew {
+				atomic.StoreUint32(&state.GetServerState().VolatileState.VoteNum, 0)
+				atomic.StoreUint32(&state.GetServerState().VolatileState.NewVoteNum, 0)
+			}
 			err := state.SetVotedFor(int(req.Term), int(req.CandidateId))
 			if err != nil {
 				logger.WithContext(ctx).Errorf("SetVotedFor error:%v", err)

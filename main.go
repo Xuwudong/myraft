@@ -52,6 +52,8 @@ func main() {
 	buffered := flag.Bool("buffered", false, "Use buffered transport")
 	secure := flag.Bool("secure", false, "Use tls secure transport")
 	id := flag.Int("id", 1, "server_id")
+	serverPort := flag.Int64("server_port", 8080, "server_port")
+	clientPort := flag.Int64("client_port", 9090, "client_port")
 
 	flag.Parse()
 
@@ -93,7 +95,7 @@ func main() {
 	}
 	net.Secure = *secure
 	if *server {
-		if err := server2.RunServer(net.TransportFactory, net.ProtocolFactory, *secure, *id, conf, net.Cfg); err != nil {
+		if err := server2.RunServer(net.TransportFactory, net.ProtocolFactory, *secure, *id, conf, *serverPort, *clientPort); err != nil {
 			fmt.Println("error running server:", err)
 		}
 	}

@@ -1,4 +1,4 @@
-package pool
+package main
 
 import (
 	"crypto/tls"
@@ -11,10 +11,9 @@ import (
 
 type Client struct {
 	lock   sync.Mutex
-	Client *raft.RaftServerClient
+	Client *raft.ClientRaftServerClient
 	inUse  bool
 	tr     thrift.TTransport
-	//invalid bool
 	server string
 }
 
@@ -26,7 +25,7 @@ func Init(servers []string) {
 		for i := 0; i < 10; i++ {
 			client, tr, err := newClient(addr)
 			if err != nil {
-				logger.Errorf("new Client error:%v", err)
+				fmt.Errorf("new Client error:%v", err)
 				continue
 			}
 			clientPool[addr] = append(clientPool[addr], &Client{
@@ -35,14 +34,31 @@ func Init(servers []string) {
 				server: addr,
 			})
 		}
-		logger.Infof("init client poor success, addr:%s", addr)
 	}
+}
+
+var curIndex = 0
+
+func GetClient() (*Client, error) {
+	if len(members) > 0 {
+		server := members[curIndex%len(members)]
+		curIndex++
+		if curIndex > 10000000000 {
+			curIndex = 0
+		}
+		client, err := GetClientByServer(server.GetClientAddr())
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
+	}
+	return GetClientByServer(leader)
 }
 
 func GetClientByServer(server string) (*Client, error) {
 	clients, ok := clientPool[server]
 	if !ok {
-		return nil, fmt.Errorf("invalid server:%s", server)
+		return nil, fmt.Errorf("invalid server")
 	}
 	for _, client := range clients {
 		if getClient(client) {
@@ -101,8 +117,8 @@ func getClient(client *Client) bool {
 	return false
 }
 
-func newClient(server string) (*raft.RaftServerClient, thrift.TTransport, error) {
-	var client *raft.RaftServerClient
+func newClient(server string) (*raft.ClientRaftServerClient, thrift.TTransport, error) {
+	var client *raft.ClientRaftServerClient
 	var err error
 	var tr thrift.TTransport
 	var count = 0
@@ -126,7 +142,7 @@ func newClient(server string) (*raft.RaftServerClient, thrift.TTransport, error)
 }
 
 func newServerClient(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, addr string,
-	secure bool, cfg *thrift.TConfiguration) (*raft.RaftServerClient, thrift.TTransport, error) {
+	secure bool, cfg *thrift.TConfiguration) (*raft.ClientRaftServerClient, thrift.TTransport, error) {
 	var transport thrift.TTransport
 	if secure {
 		transport = thrift.NewTSSLSocketConf(addr, cfg)
@@ -143,5 +159,25 @@ func newServerClient(transportFactory thrift.TTransportFactory, protocolFactory 
 	}
 	iprot := protocolFactory.GetProtocol(transport)
 	oprot := protocolFactory.GetProtocol(transport)
-	return raft.NewRaftServerClient(thrift.NewTStandardClient(iprot, oprot)), transport, nil
+	return raft.NewClientRaftServerClient(thrift.NewTStandardClient(iprot, oprot)), transport, nil
+}
+
+func NewClientServerClient(transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory, addr string,
+	secure bool, cfg *thrift.TConfiguration) (*raft.ClientRaftServerClient, thrift.TTransport, error) {
+	var transport thrift.TTransport
+	if secure {
+		transport = thrift.NewTSSLSocketConf(addr, cfg)
+	} else {
+		transport = thrift.NewTSocketConf(addr, cfg)
+	}
+	transport, err := transportFactory.GetTransport(transport)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := transport.Open(); err != nil {
+		return nil, nil, err
+	}
+	iprot := protocolFactory.GetProtocol(transport)
+	oprot := protocolFactory.GetProtocol(transport)
+	return raft.NewClientRaftServerClient(thrift.NewTStandardClient(iprot, oprot)), transport, nil
 }

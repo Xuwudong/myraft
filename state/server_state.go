@@ -1,13 +1,15 @@
 package state
 
 import (
-	"strconv"
-	"sync"
-
+	"context"
+	"encoding/json"
 	"github.com/Xuwudong/myraft/conf"
 	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/net"
+	"github.com/Xuwudong/myraft/pool"
+	"strconv"
+	"sync"
 )
 
 var HeartBeatChan = make(chan string)
@@ -22,6 +24,11 @@ var serverState = &ServerState{
 	},
 	MasterVolatileState: &MasterVolatileState{},
 	SlaveVolatileState:  &SlaveVolatileState{},
+	MemberConf: &conf.MemberConf{
+		ServerAddrMap:    map[int64]string{},
+		ClientAddrMap:    map[int64]string{},
+		NewServerAddrMap: map[int64]string{},
+	},
 }
 
 type ServerState struct {
@@ -33,6 +40,7 @@ type ServerState struct {
 	MasterVolatileState *MasterVolatileState
 	SlaveVolatileState  *SlaveVolatileState
 	Conf                *conf.Conf
+	MemberConf          *conf.MemberConf
 }
 
 type PersistentState struct {
@@ -55,9 +63,11 @@ type VolatileState struct {
 	// 已经被应用到状态机的最高的日志条目的索引（初始值为0，单调递增）
 	LastApplied int64
 	// 选自己的票数
-	VoteNum uint32
+	VoteNum    uint32
+	NewVoteNum uint32
 	// peerServers
-	PeerServers []string
+	PeerServers    []string
+	NewPeerServers []string
 }
 
 type MasterVolatileState struct {
@@ -98,8 +108,17 @@ var masterVolatileStateLock sync.Mutex
 func InitMasterVolatileState() {
 	masterVolatileStateLock.Lock()
 	defer masterVolatileStateLock.Unlock()
-	for id, _ := range GetServerState().Conf.InnerAddrMap {
-		if id != GetServerState().ServerId {
+	if GetServerState().MemberConf.State == conf.COld {
+		for id, _ := range GetServerState().VolatileState.PeerServers {
+			GetServerState().MasterVolatileState.NextIndexMap.Store(id, int64(len(GetServerState().PersistentState.Logs)))
+			GetServerState().MasterVolatileState.MatchIndexMap.Store(id, -1)
+		}
+	} else if GetServerState().MemberConf.State == conf.COldNew {
+		for id, _ := range GetServerState().VolatileState.PeerServers {
+			GetServerState().MasterVolatileState.NextIndexMap.Store(id, int64(len(GetServerState().PersistentState.Logs)))
+			GetServerState().MasterVolatileState.MatchIndexMap.Store(id, -1)
+		}
+		for id, _ := range GetServerState().VolatileState.NewPeerServers {
 			GetServerState().MasterVolatileState.NextIndexMap.Store(id, int64(len(GetServerState().PersistentState.Logs)))
 			GetServerState().MasterVolatileState.MatchIndexMap.Store(id, -1)
 		}
@@ -123,9 +142,8 @@ func SetMasterVolatileState(id int, nextIndex, matchIndex int64) {
 //}
 
 // GetMaxNum 大多数选票计算方式
-func GetMaxNum() uint32 {
-	total := len(GetServerState().Conf.InnerAddrMap)
-	return uint32(total/2 + 1)
+func GetMaxNum(peerServers int) uint32 {
+	return uint32((peerServers+1)/2 + 1)
 }
 
 func SetVotedFor(term int, candidate int) error {
@@ -141,4 +159,59 @@ func SetTerm(term int) error {
 	GetServerState().PersistentState.CurrentTerm = int64(term)
 	dateFile := GetServerState().Conf.LogDir + strconv.FormatInt(int64(GetServerState().ServerId), 10) + ".data"
 	return conf.UpdateDataField(dateFile, conf.Term, term, 0)
+}
+
+var ToNewServerAddrMapChannel = make(chan int)
+
+func ToNewServerAddrMap() {
+	ToNewServerAddrMapChannel <- 1
+}
+
+func ToCOldNewState(ctx context.Context, entry *raft.Entry) {
+	GetServerState().MemberConf.State = conf.COldNew
+	addServerAdds := make([]string, 0)
+	memberMap := make(map[int64]interface{})
+	for _, member := range entry.Members {
+		if _, ok := GetServerState().MemberConf.ServerAddrMap[member.MemberID]; !ok {
+			addServerAdds = append(addServerAdds, member.ServerAddr)
+		}
+		memberMap[member.MemberID] = &struct{}{}
+		GetServerState().MemberConf.NewServerAddrMap[member.MemberID] = member.ServerAddr
+		GetServerState().MemberConf.ClientAddrMap[member.MemberID] = member.ClientAddr
+	}
+	pool.Init(addServerAdds)
+	for id, _ := range GetServerState().MemberConf.ServerAddrMap {
+		if _, ok := memberMap[id]; !ok {
+			delete(GetServerState().MemberConf.ServerAddrMap, id)
+			delete(GetServerState().MemberConf.ClientAddrMap, id)
+		}
+	}
+	peerServers := make([]string, 0)
+	for _, addr := range GetServerState().MemberConf.NewServerAddrMap {
+		if addr != GetServerState().Net.ServerAddr {
+			peerServers = append(peerServers, addr)
+		}
+	}
+	GetServerState().VolatileState.NewPeerServers = peerServers
+	PrintState(ctx)
+}
+
+func ToCOldState(ctx context.Context) {
+	GetServerState().MemberConf.State = conf.COld
+
+	GetServerState().MemberConf.ServerAddrMap = GetServerState().MemberConf.NewServerAddrMap
+	GetServerState().MemberConf.NewServerAddrMap = make(map[int64]string)
+
+	GetServerState().VolatileState.PeerServers = GetServerState().VolatileState.NewPeerServers
+	GetServerState().VolatileState.NewPeerServers = nil
+	PrintState(ctx)
+}
+
+func PrintState(ctx context.Context) {
+	var liteState ServerState
+	bytes, _ := json.Marshal(GetServerState())
+	json.Unmarshal(bytes, &liteState)
+	liteState.PersistentState.Logs = nil
+	bytes, _ = json.Marshal(liteState)
+	logger.WithContext(ctx).Printf("serverState:%+v", string(bytes))
 }
