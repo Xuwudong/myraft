@@ -11,7 +11,6 @@ import (
 
 	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/logger"
-	"github.com/Xuwudong/myraft/pool"
 	"github.com/Xuwudong/myraft/rpc"
 	"github.com/Xuwudong/myraft/state"
 )
@@ -134,47 +133,17 @@ func selectLeaderByServers(req *raft.RequestVoteReq, servers []string, voteNum *
 			addrTemp := addr
 			go func() {
 				defer wg.Done()
-				var (
-					client *pool.Client
-					err    error
-				)
-				retry := 0
-				for {
-					client, err = pool.GetClientByServer(addrTemp)
-					if err == nil {
-						break
-					}
-					logger.Errorf("error get client: %v", err)
-					retry++
-					if retry > 5 {
-						break
-					}
+				resp, err := rpc.RequestVote(context.Background(), addrTemp, req)
+				if err != nil {
+					logger.Errorf("requestVote error:%v", err)
+					return
 				}
-				if client != nil {
-					defer func(client *pool.Client) {
-						err := pool.Recycle(client)
-						if err != nil {
-							logger.Errorf("Recycle error:%v", err)
-						}
-					}(client)
-					resp, err := rpc.RequestVote(client.Client, context.Background(), req)
-					if err != nil {
-						logger.Errorf("requestVote error:%v", err)
-						defer func() {
-							err2 := pool.Recycle(client)
-							if err2 != nil {
-								logger.Errorf("recycle err:%v", err2)
-							}
-						}()
-						return
-					}
-					if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
-						state.ToFollower(resp.Term)
-						return
-					}
-					if resp.VoteGranted {
-						atomic.AddUint32(voteNum, 1)
-					}
+				if resp.Term > state.GetServerState().PersistentState.CurrentTerm {
+					state.ToFollower(resp.Term)
+					return
+				}
+				if resp.VoteGranted {
+					atomic.AddUint32(voteNum, 1)
 				}
 			}()
 		}

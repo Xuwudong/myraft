@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"github.com/Xuwudong/myraft/gen-go/raft"
@@ -10,12 +11,12 @@ import (
 )
 
 type Client struct {
-	lock   sync.Mutex
-	Client *raft.RaftServerClient
-	inUse  bool
-	tr     thrift.TTransport
-	//invalid bool
+	lock sync.Mutex
+	*raft.RaftServerClient
+	inUse bool
+	thrift.TTransport
 	server string
+	close  bool
 }
 
 var clientPool = make(map[string][]*Client, 0)
@@ -23,29 +24,29 @@ var clientPool = make(map[string][]*Client, 0)
 func Init(servers []string) {
 	for _, addr := range servers {
 		clientPool[addr] = make([]*Client, 0)
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 200; i++ {
 			client, tr, err := newClient(addr)
 			if err != nil {
 				logger.Errorf("new Client error:%v", err)
 				continue
 			}
 			clientPool[addr] = append(clientPool[addr], &Client{
-				Client: client,
-				tr:     tr,
-				server: addr,
+				RaftServerClient: client,
+				TTransport:       tr,
+				server:           addr,
 			})
 		}
 		logger.Infof("init client poor success, addr:%s", addr)
 	}
 }
 
-func GetClientByServer(server string) (*Client, error) {
+func getClientByServer(server string) (*Client, error) {
 	clients, ok := clientPool[server]
 	if !ok {
 		return nil, fmt.Errorf("invalid server:%s", server)
 	}
 	for _, client := range clients {
-		if getClient(client) {
+		if useClient(client) {
 			return client, nil
 		}
 	}
@@ -57,44 +58,96 @@ func GetClientByServer(server string) (*Client, error) {
 		return nil, fmt.Errorf("no valid client")
 	}
 	c := &Client{
-		Client: client,
-		tr:     tf,
-		server: server,
+		RaftServerClient: client,
+		TTransport:       tf,
+		server:           server,
 	}
 	clients = append(clients, c)
-	return c, nil
+	if useClient(c) {
+		return c, nil
+	}
+	return nil, fmt.Errorf("no valid client")
 }
 
-func Return(client *Client) error {
-	client.lock.Lock()
-	defer client.lock.Unlock()
-	client.inUse = false
+func (c *Client) recycle() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.inUse = false
 	return nil
 }
 
-func Recycle(client *Client) error {
-	client.lock.Lock()
-	defer client.lock.Unlock()
-	client.inUse = false
-	err := client.tr.Close()
-	if err != nil {
-		logger.Errorf("close client error:%v", err)
-		return err
-	}
-	c, tr, err := newClient(client.server)
-	if err != nil {
-		logger.Errorf("new Client error:%v", err)
-		return err
-	}
-	client.Client = c
-	client.tr = tr
-	return nil
+func (c *Client) Close() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.close = true
+	clients := clientPool[c.server]
+	deleteClient(clients, c)
+	clientPool[c.server] = clients
+	return c.TTransport.Close()
 }
 
-func getClient(client *Client) bool {
+func AppendEntries(ctx context.Context, server string, req *raft.AppendEntriesReq) (*raft.AppendEntriesResp, error) {
+	var (
+		client *Client
+		err    error
+	)
+	client, err = getClientByServer(server)
+	if err != nil {
+		return nil, err
+	}
+	logger.Errorf("error get client: %v", err)
+	defer func(client *Client) {
+		err := client.recycle()
+		if err != nil {
+			logger.Errorf("Recycle error:%v", err)
+		}
+	}(client)
+	res, err := client.RaftServerClient.AppendEntries(ctx, req)
+	if err != nil {
+		logger.WithContext(ctx).Errorf("Error during AppendEntries:%v", err)
+		return nil, err
+	}
+	return res, err
+}
+
+func RequestVote(ctx context.Context, server string, req *raft.RequestVoteReq) (*raft.RequestVoteResp, error) {
+	var (
+		client *Client
+		err    error
+	)
+	client, err = getClientByServer(server)
+	if err != nil {
+		return nil, err
+	}
+	logger.Errorf("error get client: %v", err)
+	defer func(client *Client) {
+		err := client.recycle()
+		if err != nil {
+			logger.Errorf("Recycle error:%v", err)
+		}
+	}(client)
+	res, err := client.RaftServerClient.RequestVote(ctx, req)
+	if err != nil {
+		logger.WithContext(ctx).Errorf("Error during RequestVote:%v", err)
+	}
+	return res, err
+}
+
+func deleteClient(arr []*Client, c *Client) []*Client {
+	j := 0
+	for _, v := range arr {
+		if v != c {
+			arr[j] = v
+			j++
+		}
+	}
+	return arr[:j]
+}
+
+func useClient(client *Client) bool {
 	client.lock.Lock()
 	defer client.lock.Unlock()
-	if !client.inUse {
+	if !client.inUse && !client.close {
 		client.inUse = true
 		return true
 	}
