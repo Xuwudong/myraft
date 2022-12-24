@@ -21,60 +21,58 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"flag"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Xuwudong/myraft/gen-go/raft"
-	"github.com/Xuwudong/myraft/logger"
-	"github.com/Xuwudong/myraft/pool"
-	"github.com/apache/thrift/lib/go/thrift"
 	log "github.com/sirupsen/logrus"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"os"
 )
 
-func Usage() {
-	fmt.Fprint(os.Stderr, "Usage of ", os.Args[0], ":\n")
-	flag.PrintDefaults()
-	fmt.Fprint(os.Stderr, "\n")
+func main() {
+	Init([]string{leader})
+	http.HandleFunc("/member_add", memberAdd)
+
+	err := http.ListenAndServe(":3333", nil)
+	if errors.Is(err, http.ErrServerClosed) {
+		fmt.Printf("server closed\n")
+	} else if err != nil {
+		fmt.Printf("error starting server: %s\n", err)
+		os.Exit(1)
+	}
 }
 
-func main() {
-	flag.Usage = Usage
-	id := flag.Int64("id", 1, "server_id")
-	serverAddr := flag.String("server_addr", "localhost:8080", "server_port")
-	clientAddr := flag.String("client_addr", "localhost:9090", "client_port")
+func memberAdd(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Printf("could not read body: %s\n", err)
+	}
 
+	addMembers := make([]*raft.Member, 0)
+	json.Unmarshal(body, &addMembers)
+	log.Printf("addMembers:%v", addMembers)
+	tempMembers := members[:]
+
+	tempMembers = append(tempMembers, addMembers...)
 	wReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Write,
 			Entry: &raft.Entry{
 				EntryType: raft.EntryType_MemberChange,
-				AddMembers: []*raft.Member{
-					{
-						MemberID:   *id,
-						ServerAddr: *serverAddr,
-						ClientAddr: *clientAddr,
-					},
-				},
+				Members:   tempMembers,
 			},
 		},
 	}
-	var client *raft.ClientRaftServerClient
-	var err error
-	var tr thrift.TTransport
-	for {
-		client, tr, err = pool.NewClientServerClient(thrift.NewTTransportFactory(), thrift.NewTBinaryProtocolFactoryConf(nil),
-			"localhost:9090", false, &thrift.TConfiguration{
-				TLSConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			})
-		if err == nil {
-			break
-		}
-		logger.Printf("error new client: %v", err)
-	}
-	defer tr.Close()
-	resp, err := client.DoCommand(context.Background(), wReq)
+	resp, err := DoCommand(context.Background(), wReq)
 	log.Print(resp)
+	if err == nil && resp.Succuess {
+		members = tempMembers
+	} else {
+		log.Errorf("do command failed, req:%v", wReq)
+	}
+	log.Printf("members:%v", members)
+	io.WriteString(w, fmt.Sprintf("resp:%v", resp))
 }

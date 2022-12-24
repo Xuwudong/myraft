@@ -31,8 +31,7 @@ struct Entry {
     1: string key
     2: i64 value
     3: EntryType entry_type
-    4: list<Member> addMembers
-    5: list<Member> subMembers
+    4: list<Member> members
 }
 
 struct Member {

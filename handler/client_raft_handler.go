@@ -47,7 +47,7 @@ func (p *ClientRaftHandler) DoCommand(ctx context.Context, req *raft.DoCommandRe
 			return resp, nil
 		}
 		if entry.EntryType == raft.EntryType_MemberChange {
-			state.ToCOldNewState(entry)
+			state.ToCOldNewState(ctx, entry)
 		}
 		// send logEntry
 		req := &raft.AppendEntriesReq{
@@ -62,7 +62,9 @@ func (p *ClientRaftHandler) DoCommand(ctx context.Context, req *raft.DoCommandRe
 		}
 		resp.Succuess = true
 		// 切换到新状态
-		state.ToNewServerAddrMap()
+		if entry.EntryType == raft.EntryType_MemberChange {
+			state.ToNewServerAddrMap()
+		}
 	} else if req.Command.Opt == raft.Opt_Read {
 		if req.Command.Entry == nil {
 			return resp, nil

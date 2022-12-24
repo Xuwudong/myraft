@@ -18,18 +18,18 @@ import (
 
 func Run() {
 	rand.Seed(time.Now().Unix())
-	ranTime := rand.Intn(2000) + 2000
+	ranTime := rand.Intn(3000) + 2000
 	timeout, _ := context.WithTimeout(context.Background(), time.Millisecond*time.Duration(ranTime))
 	for {
 		select {
 		case res := <-state.HeartBeatChan:
 			logger.Debugf("receive msg:%s\n", res)
 			// 重置定时器
-			ranTime = rand.Intn(5000) + 5000
+			ranTime = rand.Intn(3000) + 5000
 			timeout, _ = context.WithTimeout(context.Background(), time.Millisecond*time.Duration(ranTime))
 		case <-timeout.Done():
 			// 开始新的超时周期
-			ranTime = rand.Intn(5000) + 5000
+			ranTime = rand.Intn(3000) + 5000
 			timeout, _ = context.WithTimeout(context.Background(), time.Millisecond*time.Duration(ranTime))
 
 			// 超时了,发起选举
@@ -99,8 +99,10 @@ func sendEmptyLogEntry() {
 	for {
 		resp, err := clientRaftHandler.DoCommand(context.Background(), &raft.DoCommandReq{
 			Command: &raft.Command{
-				Opt:   raft.Opt_Write,
-				Entry: &raft.Entry{},
+				Opt: raft.Opt_Write,
+				Entry: &raft.Entry{
+					EntryType: raft.EntryType_KV,
+				},
 			},
 		})
 		if err != nil {
@@ -116,11 +118,16 @@ func sendEmptyLogEntry() {
 }
 
 func selectLeaderByServers(req *raft.RequestVoteReq, servers []string, voteNum *uint32) {
-	// 初始化选票
+	//if len(servers) == 0 {
+	//	//一台机器不给选举
+	//	logger.Info("can not select leader when only has one server ")
+	//	return
+	//}
 	atomic.StoreUint32(voteNum, 0)
 	// 自己先得一票
 	atomic.AddUint32(voteNum, 1)
 	var wg sync.WaitGroup
+	// 初始化选票
 	for _, addr := range servers {
 		if addr != state.GetServerState().Net.ServerAddr {
 			wg.Add(1)

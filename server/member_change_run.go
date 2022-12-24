@@ -41,7 +41,7 @@ func AppendCNewConf() error {
 			logger.WithContext(context.Background()).Println(err)
 			return err
 		}
-		state.ToCOldState()
+		state.ToCOldState(context.Background())
 	}
 	// send logEntry
 	req := &raft.AppendEntriesReq{

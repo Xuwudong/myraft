@@ -63,7 +63,9 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 	if len(req.Entries) == 0 {
 		// 心跳记得 ch <- "done",保证不超时
 		state.HeartBeatChan <- "receive heartbeat"
-		state.GetServerState().SlaveVolatileState.LeaderId = req.LeaderId
+		if state.GetServerState().SlaveVolatileState.LeaderId != req.LeaderId {
+			state.GetServerState().SlaveVolatileState.LeaderId = req.LeaderId
+		}
 		//if state.GetServerState().VolatileState.CommitIndex < req.LeaderCommit {
 		//	commitIndex := req.LeaderCommit
 		//	if commitIndex >= int64(len(state.GetServerState().PersistentState.Logs)) {
@@ -113,12 +115,13 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 		if !deleted {
 			newEntries = make([]*raft.LogEntry, 0)
 			for _, entry := range req.Entries {
-				if j > 0 && j < int64(len(state.GetServerState().PersistentState.Logs)) {
+				if j >= 0 && j < int64(len(state.GetServerState().PersistentState.Logs)) {
 					myLog := state.GetServerState().PersistentState.Logs[j]
 					if myLog.Term == entry.Term &&
 						myLog.Entry != nil && entry.Entry != nil &&
 						myLog.Entry.Key == entry.Entry.Key &&
-						myLog.Entry.Value == myLog.Entry.Value {
+						myLog.Entry.Value == myLog.Entry.Value &&
+						myLog.Entry.EntryType == myLog.Entry.EntryType {
 						// 去重
 						logger.WithContext(ctx).Infof("reduplicate log entry:%v", entry)
 						j++
@@ -132,9 +135,9 @@ func (p *RaftHandler) AppendEntries(ctx context.Context, req *raft.AppendEntries
 		}
 		for _, logEntry := range newEntries {
 			if logEntry.Entry.EntryType == raft.EntryType_MemberChange {
-				state.ToCOldNewState(logEntry.Entry)
+				state.ToCOldNewState(ctx, logEntry.Entry)
 			} else if logEntry.Entry.EntryType == raft.EntryType_MemberChangeNew {
-				state.ToCOldState()
+				state.ToCOldState(ctx)
 			}
 		}
 		_, _, err := log2.AppendLog(ctx, newEntries)

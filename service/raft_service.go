@@ -59,7 +59,7 @@ func AppendToMostServers(ctx context.Context, peerServers []string, req *raft.Ap
 			}()
 			value, ok := state.GetServerState().MasterVolatileState.NextIndexMap.Load(id)
 			if !ok {
-				state.SetMasterVolatileState(id, int64(len(state.GetServerState().PersistentState.Logs)), 0)
+				state.SetMasterVolatileState(id, int64(len(state.GetServerState().PersistentState.Logs)), -1)
 				value, _ = state.GetServerState().MasterVolatileState.NextIndexMap.Load(id)
 			}
 			nextIndex, _ := value.(int64)
@@ -72,7 +72,7 @@ func AppendToMostServers(ctx context.Context, peerServers []string, req *raft.Ap
 					startIndex = int64(len(state.GetServerState().PersistentState.Logs)) - 1
 				}
 				req.Entries = state.GetServerState().PersistentState.Logs[startIndex:len(state.GetServerState().PersistentState.Logs)]
-				req.PreLogIndex = nextIndex - 1
+				req.PreLogIndex = startIndex - 1
 				if req.PreLogIndex >= 0 {
 					req.PreLogTerm = state.GetServerState().PersistentState.Logs[req.PreLogIndex].Term
 				}

@@ -26,10 +26,9 @@ func Run() {
 			}
 			state.HeartBeatChan <- "Heartbeat success"
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		//logger.WithContext(ctx).Printf("number of goroutines:%d", runtime.NumGoroutine())
-		//bytes, _ := json.Marshal(state.GetServerState())
-		//logger.Printf("serverState:%s", string(bytes))
+		state.PrintState(context.Background())
 	}
 }
 
@@ -80,7 +79,7 @@ func IamLeaderToServers(ctx context.Context, servers []string) (bool, error) {
 		go func() {
 			var err error
 			defer func() {
-				if err != nil {
+				if err == nil {
 					atomic.AddUint32(&needCount, 1)
 					if needCount+1 >= state.GetMaxNum(len(servers)) {
 						once.Do(func() {

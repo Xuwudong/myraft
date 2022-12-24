@@ -5,3 +5,22 @@ lint:
 	goimports -w .
 	go fmt ./...
 	go vet ./...
+
+
+
+run_leader:
+	sh run.sh 1 8080 9090
+
+
+run_control_kit:
+	cd control_kit && sh run.sh && cd ..
+
+run_follower:
+	sh run.sh 2 8082 9092
+	sh run.sh 3 8083 9093
+	sh run.sh 4 8084 9094
+	sh run.sh 5 8085 9095
+	sh run.sh 6 8086 9096
+
+
+

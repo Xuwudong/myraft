@@ -87,6 +87,8 @@ func RunServer(transportFactory thrift.TTransportFactory, protocolFactory thrift
 	cwrapper := thrift.WrapProcessor(clientProcessor, middleware.TrackIdProcessorMiddleware())
 	clientServer := thrift.NewTSimpleServer4(cwrapper, clientTransport, transportFactory, protocolFactory)
 
+	state.GetServerState().MemberConf.ServerAddrMap[int64(id)] = state.GetServerState().Net.ServerAddr
+	state.GetServerState().MemberConf.ClientAddrMap[int64(id)] = state.GetServerState().Net.ClientAddr
 	//pool.Init(state.GetServerState().VolatileState.PeerServers)
 	go func() {
 		Run()

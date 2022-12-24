@@ -6,17 +6,25 @@
 3. 容错，集群中只要有半数实例存活即可以支持写,follower宕机恢复后自动同步日志
 
 ### 如何跑起来
-1. 系统配置文件在conf/raft.conf,默认三个实例，可以自行增加或修改接口，注意需要手动创建系统数据目录：/var/myraft
-2. 假如没有修改配置，则使用以下shell命令启动服务
+1. 需要手动创建系统日志目录：/var/myraft
+2. 使用以下shell命令启动服务
 ```shell
-    # id参数指的是实例编号，对应raft.conf配置中的server.#{id}
-    go build
-    sh run.sh 1
-    sh run.sh 2          
-    sh run.sh 3
+    # 启动leader，由于没有服务发现，leader默认为1 8080 9090
+    sh run.sh 1 8080 9090 
+    sleep 1
+    # 启动控制面工具
+    cd control_kit && sh run.sh && cd ..
+    sleep 1
+    # 启动followers
+    sh run.sh 2 8082 9092
+	sh run.sh 3 8083 9093
+	sh run.sh 4 8084 9094
+	sh run.sh 5 8085 9095
+	sh run.sh 6 8086 9096
+	...
 ```
 
 ### TODO
-1. 支持自动扩容
+1. 引入服务发现
 2. 提供 go client sdk
 3. 日志压缩

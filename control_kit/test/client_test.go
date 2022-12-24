@@ -19,13 +19,14 @@ import (
 
 func TestCommand(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	ran := rand.Int63n(10000)
+	ran := rand.Int63n(10000000)
 	wReq := &raft.DoCommandReq{
 		Command: &raft.Command{
 			Opt: raft.Opt_Write,
 			Entry: &raft.Entry{
-				Key:   strconv.Itoa(int(ran)),
-				Value: ran,
+				Key:       strconv.Itoa(int(ran)),
+				Value:     ran,
+				EntryType: raft.EntryType_KV,
 			},
 		},
 	}
@@ -54,7 +55,8 @@ func TestCommand(t *testing.T) {
 		Command: &raft.Command{
 			Opt: raft.Opt_Read,
 			Entry: &raft.Entry{
-				Key: strconv.Itoa(int(ran)),
+				Key:       strconv.Itoa(int(ran)),
+				EntryType: raft.EntryType_KV,
 			},
 		},
 	}

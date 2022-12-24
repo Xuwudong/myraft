@@ -1,6 +1,8 @@
 package state
 
 import (
+	"context"
+	"encoding/json"
 	"github.com/Xuwudong/myraft/conf"
 	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/logger"
@@ -23,7 +25,9 @@ var serverState = &ServerState{
 	MasterVolatileState: &MasterVolatileState{},
 	SlaveVolatileState:  &SlaveVolatileState{},
 	MemberConf: &conf.MemberConf{
-		ServerAddrMap: map[int64]string{},
+		ServerAddrMap:    map[int64]string{},
+		ClientAddrMap:    map[int64]string{},
+		NewServerAddrMap: map[int64]string{},
 	},
 }
 
@@ -138,8 +142,8 @@ func SetMasterVolatileState(id int, nextIndex, matchIndex int64) {
 //}
 
 // GetMaxNum 大多数选票计算方式
-func GetMaxNum(total int) uint32 {
-	return uint32(total/2 + 1)
+func GetMaxNum(peerServers int) uint32 {
+	return uint32((peerServers+1)/2 + 1)
 }
 
 func SetVotedFor(term int, candidate int) error {
@@ -163,21 +167,24 @@ func ToNewServerAddrMap() {
 	ToNewServerAddrMapChannel <- 1
 }
 
-func ToCOldNewState(entry *raft.Entry) {
+func ToCOldNewState(ctx context.Context, entry *raft.Entry) {
 	GetServerState().MemberConf.State = conf.COldNew
-	GetServerState().MemberConf.NewServerAddrMap = GetServerState().MemberConf.ServerAddrMap
 	addServerAdds := make([]string, 0)
-	for _, member := range entry.AddMembers {
-		addServerAdds = append(addServerAdds, member.ServerAddr)
+	memberMap := make(map[int64]interface{})
+	for _, member := range entry.Members {
+		if _, ok := GetServerState().MemberConf.ServerAddrMap[member.MemberID]; !ok {
+			addServerAdds = append(addServerAdds, member.ServerAddr)
+		}
+		memberMap[member.MemberID] = &struct{}{}
 		GetServerState().MemberConf.NewServerAddrMap[member.MemberID] = member.ServerAddr
 		GetServerState().MemberConf.ClientAddrMap[member.MemberID] = member.ClientAddr
 	}
 	pool.Init(addServerAdds)
-	subServerAdds := make([]string, 0)
-	for _, member := range entry.SubMembers {
-		subServerAdds = append(subServerAdds, member.ServerAddr)
-		delete(GetServerState().MemberConf.NewServerAddrMap, member.MemberID)
-		delete(GetServerState().MemberConf.ClientAddrMap, member.MemberID)
+	for id, _ := range GetServerState().MemberConf.ServerAddrMap {
+		if _, ok := memberMap[id]; !ok {
+			delete(GetServerState().MemberConf.ServerAddrMap, id)
+			delete(GetServerState().MemberConf.ClientAddrMap, id)
+		}
 	}
 	peerServers := make([]string, 0)
 	for _, addr := range GetServerState().MemberConf.NewServerAddrMap {
@@ -186,19 +193,25 @@ func ToCOldNewState(entry *raft.Entry) {
 		}
 	}
 	GetServerState().VolatileState.NewPeerServers = peerServers
+	PrintState(ctx)
 }
 
-//func ToCNewState() {
-//	GetServerState().MemberConf.State = conf.CNew
-//	GetServerState().MemberConf.ServerAddrMap = nil
-//}
-
-func ToCOldState() {
+func ToCOldState(ctx context.Context) {
 	GetServerState().MemberConf.State = conf.COld
 
 	GetServerState().MemberConf.ServerAddrMap = GetServerState().MemberConf.NewServerAddrMap
-	GetServerState().MemberConf.NewServerAddrMap = nil
+	GetServerState().MemberConf.NewServerAddrMap = make(map[int64]string)
 
 	GetServerState().VolatileState.PeerServers = GetServerState().VolatileState.NewPeerServers
 	GetServerState().VolatileState.NewPeerServers = nil
+	PrintState(ctx)
+}
+
+func PrintState(ctx context.Context) {
+	var liteState ServerState
+	bytes, _ := json.Marshal(GetServerState())
+	json.Unmarshal(bytes, &liteState)
+	liteState.PersistentState.Logs = nil
+	bytes, _ = json.Marshal(liteState)
+	logger.WithContext(ctx).Printf("serverState:%+v", string(bytes))
 }
