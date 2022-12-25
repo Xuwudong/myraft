@@ -7,7 +7,6 @@ import (
 	"github.com/Xuwudong/myraft/gen-go/raft"
 	"github.com/Xuwudong/myraft/logger"
 	"github.com/Xuwudong/myraft/net"
-	"github.com/Xuwudong/myraft/pool"
 	"strconv"
 	"sync"
 )
@@ -179,7 +178,6 @@ func ToCOldNewState(ctx context.Context, entry *raft.Entry) {
 		GetServerState().MemberConf.NewServerAddrMap[member.MemberID] = member.ServerAddr
 		GetServerState().MemberConf.ClientAddrMap[member.MemberID] = member.ClientAddr
 	}
-	pool.Init(addServerAdds)
 	for id, _ := range GetServerState().MemberConf.ServerAddrMap {
 		if _, ok := memberMap[id]; !ok {
 			delete(GetServerState().MemberConf.ServerAddrMap, id)
