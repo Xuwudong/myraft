@@ -1,5 +1,7 @@
 github.com/Xuwudong/thrift-client-pool v0.0.0-20221225060530-757bc610f11e h1:ujGL/Z74ZtCFsCAJwjiCSAVDNCG5UHWwcOG8j4jRkqY=
 github.com/Xuwudong/thrift-client-pool v0.0.0-20221225060530-757bc610f11e/go.mod h1:9LrYdbFl+Cpb34Gg6Rm7P3Iq1Rmj3M3or85Vi4mtN9I=
+github.com/Xuwudong/thrift-client-pool v0.0.0-20221225061411-73d4cfea2e2b h1:aD2GrLkPlhNX6HsK9Tbj3YSFLcS5i6wN6/dRnXDQbGE=
+github.com/Xuwudong/thrift-client-pool v0.0.0-20221225061411-73d4cfea2e2b/go.mod h1:9LrYdbFl+Cpb34Gg6Rm7P3Iq1Rmj3M3or85Vi4mtN9I=
 github.com/apache/thrift v0.17.0 h1:cMd2aj52n+8VoAtvSvLn4kDC3aZ6IAkBuqWQ2IDu7wo=
 github.com/apache/thrift v0.17.0/go.mod h1:OLxhMRJxomX+1I/KUw03qoV3mMz16BwaKI+d4fPBx7Q=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=

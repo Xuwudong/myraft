@@ -3,7 +3,7 @@ module github.com/Xuwudong/myraft
 go 1.18
 
 require (
-	github.com/Xuwudong/thrift-client-pool v0.0.0-20221225060530-757bc610f11e
+	github.com/Xuwudong/thrift-client-pool v0.0.0-20221225061411-73d4cfea2e2b
 	github.com/apache/thrift v0.17.0
 	github.com/google/uuid v1.3.0
 	github.com/sirupsen/logrus v1.9.0
